@@ -20,6 +20,8 @@ public final class LogType {
 
 	public static final String RESTCLIENT_RESPONSE = "[RESTCLIENT-RESPONSE]";
 
+	public static final String RESTCLIENT_CONFIG = "[RESTCLIENT-CONFIG]";
+
 	private LogType() {
 	}
 

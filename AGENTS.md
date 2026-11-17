@@ -35,6 +35,7 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Keys are short and lowercase (`method`, `uri`, `status`, `duration`, `headers`, `body`, `data`, `error`); `uri` means path+query. Use SLF4J `{}` placeholders, never concatenation. Never put trace ids in the message — Spring Boot prefixes `[traceId-spanId]`.
 - Levels: HTTP/REST client INFO, `BUSINESS-ERROR` WARN without stack trace, `SYSTEM-ERROR` ERROR with stack trace. Add a tag to `LogType` and this rule before using it; `logrule_test.go` enforces both.
 - Masking is global, never per log call: `logback-spring.xml` redefines `%m` and registers `%maskedEx` (both are needed), and `app.logging.masking.rules` drive `LogMasker`. Do not reintroduce masking inside filters/interceptors; it would double-mask and miss other libraries.
+- Outbound HTTP goes through `RestClientFactory.get(name)`, which clones Boot's `RestClient.Builder`. `RestClient.create()` or `new RestTemplate()` bypasses the pool, trace propagation, and REST client logging. Do not enable retries or redirect following without asking.
 
 ## Cobra
 - Use the vendored skill `.agents/skills/golang-spf13-cobra` (pinned in `skills-lock.json`).

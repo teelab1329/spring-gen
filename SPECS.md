@@ -312,6 +312,46 @@ Other HTTP logging details:
 - The response body is copied back in a `finally` block; dropping that call
   returns empty responses to clients.
 
+## 4.3 REST clients
+
+`httpclient5` (version from Boot's BOM) plus a generated `RestClientFactory`
+give every downstream service its own connection pool. Settings live under
+`app.rest-clients`:
+
+| Setting | Default | Why |
+| --- | --- | --- |
+| `connect-timeout` | 2s | fail fast on dead hosts |
+| `read-timeout` | 5s | per-client override for slow partners |
+| `connection-request-timeout` | 1s | library default is 3 minutes — a silent stall |
+| `max-connections` | 50 | library default 25 |
+| `max-connections-per-route` | 20 | library default 5, a common bottleneck |
+| `time-to-live` | 5m | recycle connections after DNS/LB changes |
+| `validate-after-inactivity` | 2s | re-check stale connections |
+| `evict-idle-after` | 30s | background close of idle connections |
+
+`clients.<name>` overrides any value and requires `base-url`. Invalid settings
+fail startup with the property name; `max-connections-per-route` may not exceed
+`max-connections`.
+
+Deliberate choices:
+
+- Automatic retries are disabled (`disableAutomaticRetries`) — no silent repeat
+  of a POST.
+- Redirects are not followed; a 3xx comes back to the caller.
+- Clients are built from `RestClient.Builder#clone()` (Boot's provided builder),
+  so trace propagation and `RestClientLoggingInterceptor` keep working. Building
+  with `RestClient.create()` bypasses both.
+- `RestClientFactory.get(name)` validates the name and throws with the list of
+  configured clients.
+- Pool metrics are registered as `httpcomponents.httpclient.pool.*` with an
+  `httpclient=<name>` tag. The actuator exposure stays `health` only; add
+  `metrics` to `management.endpoints.web.exposure.include` to see them.
+- Pools close on context shutdown.
+
+Sample (with `--sample`): `GET /api/hello/remote` calls this same service through
+the `greeting` client, producing `[RESTCLIENT-REQUEST]`/`[RESTCLIENT-RESPONSE]`
+lines and an inner `[HTTP-REQUEST]` sharing the trace id.
+
 ## 5. Template layout
 
 ```

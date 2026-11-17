@@ -17,6 +17,7 @@ var allowedLogTags = []string{
 	"[SYSTEM-ERROR]",
 	"[RESTCLIENT-REQUEST]",
 	"[RESTCLIENT-RESPONSE]",
+	"[RESTCLIENT-CONFIG]",
 }
 
 // TestLogStatementsFollowRule fails when a template logs without a LogType tag.

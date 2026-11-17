@@ -143,6 +143,16 @@ run_case() {
 	check_log_absent "[$architecture] no clear password" "$logfile" 'hunter2'
 	check_log_absent "[$architecture] no clear token" "$logfile" 'topsecret'
 
+	# Remote sample call through the pooled REST client.
+	check_response "[$architecture] remote success" "http://127.0.0.1:$port/api/hello/remote?name=Tee" 200 '"message":"Hello, Tee!"'
+	curl -s -o /dev/null \
+		-H 'traceparent: 00-11111111111111111111111111111111-2222222222222222-01' \
+		"http://127.0.0.1:$port/api/hello/remote?name=Tee"
+	check_log "[$architecture] rest client request" "$logfile" '\[RESTCLIENT-REQUEST\] method : GET, uri : http://localhost:'"$port"'/api/hello\?name=Tee'
+	check_log "[$architecture] rest client response" "$logfile" '\[RESTCLIENT-RESPONSE\] method : GET, uri : http://localhost:'"$port"'/api/hello\?name=Tee, status : 200'
+	check_log "[$architecture] rest client trace propagated" "$logfile" '11111111111111111111111111111111-[0-9a-f]{16}.*\[RESTCLIENT-REQUEST\]'
+	check_log "[$architecture] downstream request same trace" "$logfile" '11111111111111111111111111111111-[0-9a-f]{16}.*\[HTTP-REQUEST\] method : GET, uri : /api/hello\?name=Tee'
+
 	stop_app
 }
 

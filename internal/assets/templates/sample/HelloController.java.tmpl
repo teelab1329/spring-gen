@@ -31,4 +31,11 @@ public class HelloController {
 		return ResponseEntity.ok(JSendResponse.success(new HelloResponse(greeting.message())));
 	}
 
+	/** Calls this same service over the pooled REST client configured for "greeting". */
+	@GetMapping("/remote")
+	public ResponseEntity<JSendResponse<HelloResponse>> remoteHello(@RequestParam String name) {
+		Greeting greeting = helloService.remoteGreeting(name);
+		return ResponseEntity.ok(JSendResponse.success(new HelloResponse(greeting.message())));
+	}
+
 }

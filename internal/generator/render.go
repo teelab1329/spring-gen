@@ -97,8 +97,17 @@ var manifest = []templateEntry{
 	{source: "logging/HttpLoggingFilterTest.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingFilterTest.java", true)},
 	{source: "logging/RestClientLoggingInterceptorTest.java.tmpl", target: javaTarget(arch.RoleLogging, "RestClientLoggingInterceptorTest.java", true)},
 
+	// Outbound REST clients: one Apache HttpClient 5 pool per downstream.
+	{source: "restclient/RestClientConfig.java.tmpl", target: javaTarget(arch.RoleRestClient, "RestClientConfig.java", false)},
+	{source: "restclient/RestClientProperties.java.tmpl", target: javaTarget(arch.RoleRestClient, "RestClientProperties.java", false)},
+	{source: "restclient/RestClientFactory.java.tmpl", target: javaTarget(arch.RoleRestClient, "RestClientFactory.java", false)},
+	{source: "restclient/RestClientFactoryTest.java.tmpl", target: javaTarget(arch.RoleRestClient, "RestClientFactoryTest.java", true)},
+
 	// Hello sample: optional, and the use case port only exists in clean.
 	{source: "sample/Greeting.java.tmpl", target: javaTarget(arch.RoleModel, "Greeting.java", false), when: hasSample},
+	{source: "sample/GreetingGateway.java.tmpl", target: javaTarget(arch.RoleOutPort, "GreetingGateway.java", false), when: hasUseCase},
+	{source: "sample/GreetingClient.java.tmpl", target: javaTarget(arch.RoleClient, "GreetingClient.java", false), when: hasSample},
+	{source: "sample/GreetingClientTest.java.tmpl", target: javaTarget(arch.RoleClient, "GreetingClientTest.java", true), when: hasSample},
 	{source: "sample/HelloUseCase.java.tmpl", target: javaTarget(arch.RoleUseCase, "HelloUseCase.java", false), when: hasUseCase},
 	{source: "sample/HelloService.java.tmpl", target: javaTarget(arch.RoleService, "HelloService.java", false), when: hasSample},
 	{source: "sample/HelloResponse.java.tmpl", target: javaTarget(arch.RoleDTO, "HelloResponse.java", false), when: hasSample},

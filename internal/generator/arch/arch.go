@@ -18,6 +18,9 @@ const (
 	RoleDTO        Role = "dto"        // web response DTOs
 	RoleController Role = "controller" // HTTP entry points
 	RoleLogging    Role = "logging"    // cross-cutting HTTP logging
+	RoleRestClient Role = "restclient" // outbound REST client wiring
+	RoleClient     Role = "client"     // outbound client adapters
+	RoleOutPort    Role = "outport"    // outbound port (clean only)
 )
 
 // Architecture is one named role-to-package mapping. Packages are suffixes
@@ -57,6 +60,8 @@ var registry = []Architecture{
 			RoleDTO:        "dto",
 			RoleController: "controller",
 			RoleLogging:    "common.logging",
+			RoleRestClient: "common.restclient",
+			RoleClient:     "client",
 		},
 	},
 	{
@@ -72,6 +77,9 @@ var registry = []Architecture{
 			RoleDTO:        "infrastructure.web.dto",
 			RoleController: "infrastructure.web",
 			RoleLogging:    "infrastructure.logging",
+			RoleRestClient: "infrastructure.restclient",
+			RoleClient:     "infrastructure.client",
+			RoleOutPort:    "application.port.out",
 		},
 	},
 }

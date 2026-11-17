@@ -6,4 +6,6 @@ public interface HelloUseCase {
 
 	Greeting greet(String name);
 
+	Greeting remoteGreeting(String name);
+
 }

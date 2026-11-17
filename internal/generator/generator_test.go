@@ -145,6 +145,9 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		"src/main/java/com/acme/orderservice/common/logging/RestClientLoggingInterceptor.java",
 		"src/test/java/com/acme/orderservice/common/logging/HttpLoggingFilterTest.java",
 		"src/test/java/com/acme/orderservice/common/logging/RestClientLoggingInterceptorTest.java",
+		"src/main/java/com/acme/orderservice/common/restclient/RestClientFactory.java",
+		"src/test/java/com/acme/orderservice/common/restclient/RestClientFactoryTest.java",
+		"src/main/java/com/acme/orderservice/client/GreetingClient.java",
 		"src/main/java/com/acme/orderservice/controller/HelloController.java",
 		"src/main/java/com/acme/orderservice/service/HelloService.java",
 		"src/test/java/com/acme/orderservice/controller/HelloControllerTest.java",
@@ -168,6 +171,7 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		"spring-boot-starter-web",
 		"spring-boot-starter-actuator",
 		"micrometer-tracing-bridge-otel",
+		"httpclient5",
 	} {
 		if !strings.Contains(string(pom), want) {
 			t.Errorf("pom.xml does not contain %q", want)
@@ -220,6 +224,9 @@ func TestGenerateCleanArchitecture(t *testing.T) {
 		"src/main/java/com/acme/orderservice/infrastructure/web/response/JSendResponse.java",
 		"src/main/java/com/acme/orderservice/infrastructure/web/dto/HelloResponse.java",
 		"src/main/java/com/acme/orderservice/infrastructure/logging/HttpLoggingFilter.java",
+		"src/main/java/com/acme/orderservice/infrastructure/restclient/RestClientFactory.java",
+		"src/main/java/com/acme/orderservice/infrastructure/client/GreetingClient.java",
+		"src/main/java/com/acme/orderservice/application/port/out/GreetingGateway.java",
 		"src/test/java/com/acme/orderservice/infrastructure/web/HelloControllerTest.java",
 	} {
 		if _, err := os.Stat(filepath.Join(result.Dir, filepath.FromSlash(path))); err != nil {
