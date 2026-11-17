@@ -217,8 +217,15 @@ app:
   http-logging:
     enabled: true
     max-body-size: 10KB
-    masked-headers: [authorization, cookie, set-cookie, proxy-authorization, x-api-key]
     exclude-paths: [/actuator/**]
+  logging:
+    masking:
+      enabled: true
+      rules:
+        - { type: FULL,    keys: [password, token, authorization, cookie, x-api-key] }
+        - { type: PARTIAL, keys: [cardNumber, pan], keep-start: 4, keep-end: 4 }
+        - { type: EMAIL,   keys: [email, emailAddress] }
+        - { type: HASH,    keys: [nationalId, phone] }
 ```
 
 `HttpLoggingFilter` logs after the request completes:
@@ -227,6 +234,33 @@ app:
 [HTTP-REQUEST] method : GET, uri : /api/hello?name=Tee, headers : {accept=*/*, authorization=***}, body : 
 [HTTP-RESPONSE] method : GET, uri : /api/hello?name=Tee, status : 200, duration : 5ms, headers : {content-type=application/json}, body : {"status":"success",…}
 ```
+
+### Global masking
+
+Masking is not done by the logging code; it happens in Logback, so it covers
+every log line, including framework and library output:
+
+- `logback-spring.xml` redefines `%m`/`%msg`/`%message` to `MaskingMessageConverter`
+  and registers `%maskedEx` (`MaskingThrowableConverter`), then includes Spring
+  Boot's `base.xml` unchanged, keeping the console pattern and
+  `[traceId-spanId]` prefix.
+- `logging.exception-conversion-word: "%maskedEx"` routes stack traces through
+  the masking converter. Both hooks are required; removing either silently
+  disables masking, and `make e2e` fails when that happens.
+- Logback constructs converters outside Spring, so `MaskingConfig` pushes the
+  rules into the static `LogMasker`. Lines logged before startup uses
+  `MaskingRule.defaults()`, which mirrors the YAML defaults.
+- Rules apply to key/value pairs in every shape:
+  `key=value`, `key: value`, `key:value`, JSON strings and numbers, header maps,
+  query strings, and XML elements. Keys are matched case-insensitively as whole
+  keys (`tokenizer=` is untouched).
+- Types: `FULL` → `***`; `PARTIAL` → keeps `keep-start`/`keep-end`, falls back
+  to `***` when the value is too short; `EMAIL` → `j*******@example.com`, falls
+  back to `***` when invalid; `HASH` → `sha256:<16 hex>`.
+- **HASH is plain SHA-256.** Short or guessable values (phone numbers, national
+  IDs) can be brute-forced. Use it for correlation, not secrecy.
+- Header masking is no longer part of `HttpLoggingProperties`: headers are
+  logged raw and the global masker redacts the configured keys.
 
 ### Logging rule (applies to all generated code)
 
@@ -289,8 +323,10 @@ internal/assets/
                               mvn/wrapper/maven-wrapper.properties
     jsend/                    JSendResponse, ValidationException, BusinessException,
                               GlobalExceptionHandler (+ test)
-    logging/                  HttpLoggingProperties, HttpLoggingConfig,
-                              HttpLoggingFilter (+ test)
+    logging/                  LogType, HttpLoggingProperties, HttpLoggingConfig,
+                              HttpLoggingFilter, RestClientLoggingInterceptor,
+                              LogMasker + masking classes (+ tests)
+    base/logback-spring.xml.tmpl   global masking hooks
     sample/                   Greeting, HelloUseCase (clean only), HelloService,
                               HelloResponse, HelloController, HelloControllerTest
     web/ jpa/ validation/ …   planned feature directories

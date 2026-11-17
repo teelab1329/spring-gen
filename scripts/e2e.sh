@@ -126,10 +126,11 @@ run_case() {
 	check_response "[$architecture] validation fail" "http://127.0.0.1:$port/api/hello?name=%20" 400 '"message":"Name must not be blank."' '"data"'
 	check_response "[$architecture] unknown path" "http://127.0.0.1:$port/api/nope" 404 '"message":"Resource not found: /api/nope"' '"data"'
 
-	# Send a request with a known traceparent and confirm the log continues it.
+	# A request with a known traceparent, a secret query value and a token header.
 	curl -s -o /dev/null \
 		-H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
-		"http://127.0.0.1:$port/api/hello?name=Trace"
+		-H 'Authorization: Bearer topsecret' \
+		"http://127.0.0.1:$port/api/hello?name=Tee&password=hunter2"
 
 	local logfile="$work/app-$port.log"
 	check_log "[$architecture] request logged" "$logfile" '\[HTTP-REQUEST\] method : GET, uri : /api/hello'
@@ -137,6 +138,10 @@ run_case() {
 	check_log "[$architecture] trace correlation" "$logfile" '\[[0-9a-f]{32}-[0-9a-f]{16}\]'
 	check_log "[$architecture] traceparent continued" "$logfile" '4bf92f3577b34da6a3ce929d0e0e4736'
 	check_log_absent "[$architecture] actuator not logged" "$logfile" '/actuator/health'
+	check_log "[$architecture] password masked" "$logfile" 'password=\*\*\*'
+	check_log "[$architecture] authorization masked" "$logfile" 'authorization=\*\*\*'
+	check_log_absent "[$architecture] no clear password" "$logfile" 'hunter2'
+	check_log_absent "[$architecture] no clear token" "$logfile" 'topsecret'
 
 	stop_app
 }

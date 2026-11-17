@@ -36,7 +36,7 @@ public class RestClientLoggingInterceptor implements ClientHttpRequestIntercepto
 			throws IOException {
 		log.info("{} method : {}, uri : {}, headers : {}, body : {}", LogType.RESTCLIENT_REQUEST,
 			request.getMethod(), request.getURI(),
-			HttpLoggingSupport.headers(properties, request.getHeaders()),
+			HttpLoggingSupport.headers(request.getHeaders()),
 			HttpLoggingSupport.body(properties, body, request.getHeaders().getContentType(), body.length));
 
 		long start = System.nanoTime();
@@ -47,7 +47,7 @@ public class RestClientLoggingInterceptor implements ClientHttpRequestIntercepto
 		byte[] responseBody = StreamUtils.copyToByteArray(response.getBody());
 		log.info("{} method : {}, uri : {}, status : {}, duration : {}ms, headers : {}, body : {}",
 			LogType.RESTCLIENT_RESPONSE, request.getMethod(), request.getURI(), statusCode(response),
-			durationMillis, HttpLoggingSupport.headers(properties, response.getHeaders()),
+			durationMillis, HttpLoggingSupport.headers(response.getHeaders()),
 			HttpLoggingSupport.body(properties, responseBody, response.getHeaders().getContentType(),
 				responseBody.length));
 

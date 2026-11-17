@@ -1,0 +1,44 @@
+package {{ .Package "logging" }};
+
+import java.util.List;
+
+/**
+ * One masking rule: a masking type plus the keys it applies to.
+ *
+ * @param type how the value is rendered
+ * @param keys key names, matched case-insensitively as whole keys
+ * @param keepStart characters kept at the start by {@link MaskingType#PARTIAL}
+ * @param keepEnd characters kept at the end by {@link MaskingType#PARTIAL}
+ */
+public record MaskingRule(MaskingType type, List<String> keys, int keepStart, int keepEnd) {
+
+	public MaskingRule {
+		type = type == null ? MaskingType.FULL : type;
+		keys = keys == null ? List.of() : List.copyOf(keys);
+		keepStart = Math.max(0, keepStart);
+		keepEnd = Math.max(0, keepEnd);
+	}
+
+	/**
+	 * Used before Spring reads application.yml, and when no rules are configured.
+	 * Keep in sync with the {@code app.logging.masking.rules} defaults.
+	 */
+	public static List<MaskingRule> defaults() {
+		return List.of(
+			new MaskingRule(MaskingType.FULL,
+				List.of("password", "passwd", "secret", "token", "access_token", "refresh_token",
+					"authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key",
+					"api_key", "apikey"),
+				0, 0),
+			new MaskingRule(MaskingType.PARTIAL,
+				List.of("cardNumber", "card_number", "pan", "accountNumber", "account_number"),
+				4, 4),
+			new MaskingRule(MaskingType.EMAIL,
+				List.of("email", "emailAddress", "email_address"),
+				0, 0),
+			new MaskingRule(MaskingType.HASH,
+				List.of("nationalId", "national_id", "phone", "phoneNumber", "phone_number"),
+				0, 0));
+	}
+
+}

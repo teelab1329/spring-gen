@@ -1,0 +1,63 @@
+package com.acme.orderservice.infrastructure.logging;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.LoggingEvent;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Checks the Logback hooks that make masking global, including stack traces.
+ */
+class MaskingLogbackTest {
+
+	private final LoggerContext context = new LoggerContext();
+
+	private final Logger logger = context.getLogger("masking-test");
+
+	@BeforeEach
+	void configureMasker() {
+		LogMasker.configure(new MaskingProperties(true, MaskingRule.defaults()));
+	}
+
+	@Test
+	void messageConverterMasksEveryLogLine() {
+		MaskingMessageConverter converter = new MaskingMessageConverter();
+		converter.setContext(context);
+		converter.start();
+
+		LoggingEvent event = new LoggingEvent("test", logger, Level.INFO,
+			"login password=hunter2 email=john.doe@example.com cardNumber=4111111111111111",
+			null, null);
+
+		String converted = converter.convert(event);
+		assertThat(converted)
+			.contains("password=***")
+			.contains("email=j*******@example.com")
+			.contains("cardNumber=4111********1111")
+			.doesNotContain("hunter2")
+			.doesNotContain("john.doe@");
+	}
+
+	@Test
+	void throwableConverterMasksStackTraces() {
+		MaskingThrowableConverter converter = new MaskingThrowableConverter();
+		converter.setContext(context);
+		converter.start();
+
+		LoggingEvent event = new LoggingEvent("test", logger, Level.ERROR, "boom",
+			new IllegalStateException("query failed for password=hunter2"), new Object[0]);
+
+		String converted = converter.convert(event);
+		assertThat(converted)
+			.contains("IllegalStateException")
+			.contains("password=***")
+			.doesNotContain("hunter2");
+	}
+
+}

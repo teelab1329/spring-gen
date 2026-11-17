@@ -55,7 +55,7 @@ class HttpLoggingFilterTest {
 		String logs = logs();
 		assertThat(logs)
 			.contains("[HTTP-REQUEST] method : GET, uri : /api/hello?name=Tee")
-			.contains("authorization=***")
+			.contains("authorization=secret-token")
 			.contains("[HTTP-RESPONSE] method : GET, uri : /api/hello?name=Tee, status : 200")
 			.contains("duration : ")
 			.contains("body : {\"status\":\"success\"}");
@@ -82,7 +82,7 @@ class HttpLoggingFilterTest {
 		request.setContent("0123456789abcdefghij0123456789abcdefghij".getBytes(StandardCharsets.UTF_8));
 		MockHttpServletResponse response = new MockHttpServletResponse();
 
-		filter(new HttpLoggingProperties(true, DataSize.ofBytes(10), List.of(), List.of()))
+		filter(new HttpLoggingProperties(true, DataSize.ofBytes(10), List.of()))
 			.doFilter(request, response, (req, res) -> readBody(req));
 
 		assertThat(logs())
@@ -109,7 +109,7 @@ class HttpLoggingFilterTest {
 		request.setContent("first\nsecond".getBytes(StandardCharsets.UTF_8));
 		MockHttpServletResponse response = new MockHttpServletResponse();
 
-		filter(new HttpLoggingProperties(true, DataSize.ofKilobytes(10), List.of(), List.of()))
+		filter(new HttpLoggingProperties(true, DataSize.ofKilobytes(10), List.of()))
 			.doFilter(request, response, (req, res) -> readBody(req));
 
 		assertThat(logs()).contains("body : first\\nsecond");
@@ -125,8 +125,7 @@ class HttpLoggingFilterTest {
 	}
 
 	private static HttpLoggingProperties properties() {
-		return new HttpLoggingProperties(true, DataSize.ofKilobytes(10),
-			List.of("authorization", "cookie"), List.of("/actuator/**"));
+		return new HttpLoggingProperties(true, DataSize.ofKilobytes(10), List.of("/actuator/**"));
 	}
 
 	private String logs() {

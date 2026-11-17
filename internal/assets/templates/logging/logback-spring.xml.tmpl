@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<!--
+		Masking is global: redefining %m and registering %maskedEx covers every
+		log line, including framework and library output. Spring Boot's base.xml
+		still provides the console pattern and the [traceId-spanId] prefix.
+	-->
+	<conversionRule conversionWord="m" class="{{ .Package "logging" }}.MaskingMessageConverter"/>
+	<conversionRule conversionWord="msg" class="{{ .Package "logging" }}.MaskingMessageConverter"/>
+	<conversionRule conversionWord="message" class="{{ .Package "logging" }}.MaskingMessageConverter"/>
+	<conversionRule conversionWord="maskedEx" class="{{ .Package "logging" }}.MaskingThrowableConverter"/>
+
+	<include resource="org/springframework/boot/logging/logback/base.xml"/>
+</configuration>

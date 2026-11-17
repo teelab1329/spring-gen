@@ -133,11 +133,14 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		".mvn/wrapper/maven-wrapper.properties",
 		".gitignore",
 		"src/main/resources/application.yml",
+		"src/main/resources/logback-spring.xml",
 		"src/main/java/com/acme/orderservice/OrderServiceApplication.java",
 		"src/main/java/com/acme/orderservice/common/response/JSendResponse.java",
 		"src/main/java/com/acme/orderservice/common/exception/GlobalExceptionHandler.java",
 		"src/test/java/com/acme/orderservice/common/exception/GlobalExceptionHandlerTest.java",
 		"src/main/java/com/acme/orderservice/common/logging/HttpLoggingFilter.java",
+		"src/main/java/com/acme/orderservice/common/logging/LogMasker.java",
+		"src/main/java/com/acme/orderservice/common/logging/MaskingConfig.java",
 		"src/main/java/com/acme/orderservice/common/logging/LogType.java",
 		"src/main/java/com/acme/orderservice/common/logging/RestClientLoggingInterceptor.java",
 		"src/test/java/com/acme/orderservice/common/logging/HttpLoggingFilterTest.java",
@@ -173,6 +176,14 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 	exporterDependency := regexp.MustCompile(`<artifactId>[^<]*exporter[^<]*</artifactId>`)
 	if exporterDependency.Match(pom) {
 		t.Errorf("pom.xml must not declare a trace exporter:\n%s", pom)
+	}
+
+	logbackConfig, err := os.ReadFile(filepath.Join(result.Dir, "src/main/resources/logback-spring.xml"))
+	if err != nil {
+		t.Fatalf("read logback-spring.xml: %v", err)
+	}
+	if !strings.Contains(string(logbackConfig), "com.acme.orderservice.common.logging.MaskingMessageConverter") {
+		t.Errorf("logback-spring.xml does not reference the masking converter:\n%s", logbackConfig)
 	}
 
 	info, err := os.Stat(filepath.Join(result.Dir, "mvnw"))

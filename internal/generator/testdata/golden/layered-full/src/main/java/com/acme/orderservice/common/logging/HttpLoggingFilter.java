@@ -73,7 +73,7 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
 	private void logRequest(ContentCachingRequestWrapper request) {
 		log.info("{} method : {}, uri : {}, headers : {}, body : {}", LogType.HTTP_REQUEST,
 			request.getMethod(), HttpLoggingSupport.uri(request),
-			HttpLoggingSupport.headers(properties, requestHeaders(request)),
+			HttpLoggingSupport.headers(requestHeaders(request)),
 			HttpLoggingSupport.body(properties, request.getContentAsByteArray(), request.getContentType(), -1));
 	}
 
@@ -81,7 +81,7 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
 		byte[] content = response.getContentAsByteArray();
 		log.info("{} method : {}, uri : {}, status : {}, duration : {}ms, headers : {}, body : {}",
 			LogType.HTTP_RESPONSE, request.getMethod(), HttpLoggingSupport.uri(request), response.getStatus(),
-			durationMillis, HttpLoggingSupport.headers(properties, responseHeaders(response)),
+			durationMillis, HttpLoggingSupport.headers(responseHeaders(response)),
 			HttpLoggingSupport.body(properties, content, response.getContentType(), content.length));
 	}
 

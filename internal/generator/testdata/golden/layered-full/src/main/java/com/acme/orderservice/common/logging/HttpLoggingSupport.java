@@ -16,11 +16,10 @@ import org.springframework.http.MediaType;
 
 /**
  * Rendering helpers shared by the HTTP logging filter and the REST client
- * interceptor, so both follow the same logging rule.
+ * interceptor. Masking is not applied here: the global Logback converters
+ * mask the finished line.
  */
 final class HttpLoggingSupport {
-
-	private static final String MASK = "***";
 
 	private HttpLoggingSupport() {
 	}
@@ -31,20 +30,20 @@ final class HttpLoggingSupport {
 		return query == null ? request.getRequestURI() : request.getRequestURI() + "?" + query;
 	}
 
-	static String headers(HttpLoggingProperties properties, HttpHeaders headers) {
+	static String headers(HttpHeaders headers) {
 		Map<String, List<String>> values = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 		headers.forEach(values::put);
-		return headers(properties, values);
+		return headers(values);
 	}
 
-	/** Renders {@code {name=value, ...}} with masked values replaced by {@code ***}. */
-	static String headers(HttpLoggingProperties properties, Map<String, List<String>> headers) {
+	/** Renders {@code {name=value, ...}} with repeated values joined by commas. */
+	static String headers(Map<String, List<String>> headers) {
 		Map<String, List<String>> sorted = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 		sorted.putAll(headers);
 
 		List<String> entries = new ArrayList<>(sorted.size());
-		sorted.forEach((name, values) -> entries.add(name.toLowerCase(Locale.ROOT) + "="
-			+ (isMasked(properties, name) ? MASK : String.join(", ", values))));
+		sorted.forEach((name, values) -> entries.add(
+			name.toLowerCase(Locale.ROOT) + "=" + String.join(", ", values)));
 		return "{" + String.join(", ", entries) + "}";
 	}
 
@@ -104,10 +103,6 @@ final class HttpLoggingSupport {
 	/** Keeps one log entry on one line, even with crafted bodies. */
 	static String escape(String text) {
 		return text.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n");
-	}
-
-	private static boolean isMasked(HttpLoggingProperties properties, String name) {
-		return properties.maskedHeaders().stream().anyMatch((masked) -> masked.equalsIgnoreCase(name));
 	}
 
 }

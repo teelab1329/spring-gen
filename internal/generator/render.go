@@ -75,6 +75,18 @@ var manifest = []templateEntry{
 	{source: "jsend/GlobalExceptionHandler.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandler.java", false)},
 	{source: "jsend/GlobalExceptionHandlerTest.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandlerTest.java", true)},
 
+	// Global log masking (Logback converters, applies to every log line).
+	{source: "logging/MaskingType.java.tmpl", target: javaTarget(arch.RoleLogging, "MaskingType.java", false)},
+	{source: "logging/MaskingRule.java.tmpl", target: javaTarget(arch.RoleLogging, "MaskingRule.java", false)},
+	{source: "logging/MaskingProperties.java.tmpl", target: javaTarget(arch.RoleLogging, "MaskingProperties.java", false)},
+	{source: "logging/LogMasker.java.tmpl", target: javaTarget(arch.RoleLogging, "LogMasker.java", false)},
+	{source: "logging/MaskingMessageConverter.java.tmpl", target: javaTarget(arch.RoleLogging, "MaskingMessageConverter.java", false)},
+	{source: "logging/MaskingThrowableConverter.java.tmpl", target: javaTarget(arch.RoleLogging, "MaskingThrowableConverter.java", false)},
+	{source: "logging/MaskingConfig.java.tmpl", target: javaTarget(arch.RoleLogging, "MaskingConfig.java", false)},
+	{source: "logging/logback-spring.xml.tmpl", target: fileTarget("src/main/resources/logback-spring.xml")},
+	{source: "logging/LogMaskerTest.java.tmpl", target: javaTarget(arch.RoleLogging, "LogMaskerTest.java", true)},
+	{source: "logging/MaskingLogbackTest.java.tmpl", target: javaTarget(arch.RoleLogging, "MaskingLogbackTest.java", true)},
+
 	// HTTP request/response logging (always generated, toggled by property).
 	{source: "logging/LogType.java.tmpl", target: javaTarget(arch.RoleLogging, "LogType.java", false)},
 	{source: "logging/HttpLoggingSupport.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingSupport.java", false)},

@@ -69,7 +69,7 @@ class RestClientLoggingInterceptorTest {
 		String logs = logs();
 		assertThat(logs)
 			.contains("[RESTCLIENT-REQUEST] method : POST, uri : http://localhost:8080/api/users")
-			.contains("authorization=***")
+			.contains("authorization=secret-token")
 			.contains("body : {\"name\":\"Tee\"}")
 			.contains("[RESTCLIENT-RESPONSE] method : POST, uri : http://localhost:8080/api/users, status : 201")
 			.contains("body : {\"id\":\"u-1\"}");
@@ -78,8 +78,7 @@ class RestClientLoggingInterceptorTest {
 	}
 
 	private static HttpLoggingProperties properties() {
-		return new HttpLoggingProperties(true, DataSize.ofKilobytes(10),
-			List.of("authorization"), List.of());
+		return new HttpLoggingProperties(true, DataSize.ofKilobytes(10), List.of());
 	}
 
 	private String logs() {
