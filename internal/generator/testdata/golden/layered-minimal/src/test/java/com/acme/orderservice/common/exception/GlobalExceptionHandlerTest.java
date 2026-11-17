@@ -5,9 +5,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.Map;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -27,6 +34,23 @@ class GlobalExceptionHandlerTest {
 		.setControllerAdvice(new GlobalExceptionHandler())
 		.build();
 
+	private Logger logger;
+
+	private ListAppender<ILoggingEvent> appender;
+
+	@BeforeEach
+	void attachAppender() {
+		logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+		appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+	}
+
+	@AfterEach
+	void detachAppender() {
+		logger.detachAppender(appender);
+	}
+
 	@Test
 	void rendersBusinessFailWithData() throws Exception {
 		mockMvc.perform(get("/test/conflict"))
@@ -34,6 +58,16 @@ class GlobalExceptionHandlerTest {
 			.andExpect(jsonPath("$.status").value("fail"))
 			.andExpect(jsonPath("$.message").value("Item SKU-1 is out of stock."))
 			.andExpect(jsonPath("$.data.sku").value("SKU-1"));
+
+		List<ILoggingEvent> events = appender.list;
+		org.assertj.core.api.Assertions.assertThat(events).hasSize(1);
+		ILoggingEvent event = events.get(0);
+		org.assertj.core.api.Assertions.assertThat(event.getLevel().toString()).isEqualTo("WARN");
+		org.assertj.core.api.Assertions.assertThat(event.getFormattedMessage())
+			.contains("[BUSINESS-ERROR] Item SKU-1 is out of stock.")
+			.contains("status : 409")
+			.contains("data : {sku=SKU-1}");
+		org.assertj.core.api.Assertions.assertThat(event.getThrowableProxy()).isNull();
 	}
 
 	@Test
@@ -43,6 +77,12 @@ class GlobalExceptionHandlerTest {
 			.andExpect(jsonPath("$.status").value("fail"))
 			.andExpect(jsonPath("$.message").value("Customer 42 does not exist."))
 			.andExpect(jsonPath("$.data").doesNotExist());
+
+		org.assertj.core.api.Assertions.assertThat(appender.list).hasSize(1);
+		org.assertj.core.api.Assertions.assertThat(appender.list.get(0).getFormattedMessage())
+			.contains("[BUSINESS-ERROR] Customer 42 does not exist.")
+			.contains("status : 404")
+			.doesNotContain("data :");
 	}
 
 	@Test
@@ -51,6 +91,16 @@ class GlobalExceptionHandlerTest {
 			.andExpect(status().isInternalServerError())
 			.andExpect(jsonPath("$.status").value("error"))
 			.andExpect(jsonPath("$.message").value("Internal server error"));
+
+		org.assertj.core.api.Assertions.assertThat(appender.list).hasSize(1);
+		ILoggingEvent event = appender.list.get(0);
+		org.assertj.core.api.Assertions.assertThat(event.getLevel().toString()).isEqualTo("ERROR");
+		org.assertj.core.api.Assertions.assertThat(event.getFormattedMessage())
+			.contains("[SYSTEM-ERROR] Unexpected error.")
+			.contains("method : GET")
+			.contains("uri : /test/boom")
+			.contains("java.lang.IllegalStateException: boom");
+		org.assertj.core.api.Assertions.assertThat(event.getThrowableProxy()).isNotNull();
 	}
 
 	@Test

@@ -1,0 +1,38 @@
+package com.acme.orderservice.common.logging;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.client.RestClientCustomizer;
+import org.springframework.boot.web.client.RestTemplateCustomizer;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(HttpLoggingProperties.class)
+@ConditionalOnProperty(prefix = "app.http-logging", name = "enabled", havingValue = "true")
+public class HttpLoggingConfig {
+
+	@Bean
+	public FilterRegistrationBean<HttpLoggingFilter> httpLoggingFilter(HttpLoggingProperties properties) {
+		FilterRegistrationBean<HttpLoggingFilter> registration =
+			new FilterRegistrationBean<>(new HttpLoggingFilter(properties));
+		// Spring Boot registers its tracing filter at HIGHEST_PRECEDENCE + 1. A
+		// higher value runs inside it, so the trace id is already in the MDC when
+		// this filter logs. Lower it and the log lines lose [traceId-spanId].
+		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
+		return registration;
+	}
+
+	@Bean
+	public RestClientCustomizer httpLoggingRestClientCustomizer(HttpLoggingProperties properties) {
+		return (builder) -> builder.requestInterceptor(new RestClientLoggingInterceptor(properties));
+	}
+
+	@Bean
+	public RestTemplateCustomizer httpLoggingRestTemplateCustomizer(HttpLoggingProperties properties) {
+		return (template) -> template.getInterceptors().add(new RestClientLoggingInterceptor(properties));
+	}
+
+}

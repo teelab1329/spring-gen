@@ -1,0 +1,17 @@
+package {{ .Package "logging" }};
+
+import ch.qos.logback.classic.pattern.ClassicConverter;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+
+/**
+ * Redefines Logback's {@code %m}/{@code %msg}/{@code %message} so every log
+ * line is masked, including framework and library logs.
+ */
+public class MaskingMessageConverter extends ClassicConverter {
+
+	@Override
+	public String convert(ILoggingEvent event) {
+		return LogMasker.get().mask(event.getFormattedMessage());
+	}
+
+}

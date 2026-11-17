@@ -5,8 +5,41 @@ spring:
     virtual:
       enabled: true
 
+logging:
+  level:
+    root: INFO
+  # Every log line and stack trace goes through the masking converters.
+  exception-conversion-word: "%maskedEx"
+
 management:
   endpoints:
     web:
       exposure:
         include: health
+  tracing:
+    sampling:
+      probability: 1.0
+
+# HTTP request/response logging with OpenTelemetry-style fields.
+# There is no trace exporter: ids only annotate this application's log lines.
+app:
+  http-logging:
+    enabled: true
+    max-body-size: 10KB
+    exclude-paths:
+      - /actuator/**
+  logging:
+    masking:
+      enabled: true
+      rules:
+        - type: FULL
+          keys: [password, passwd, secret, token, access_token, refresh_token, authorization,
+                 proxy-authorization, cookie, set-cookie, x-api-key, api_key, apikey]
+        - type: PARTIAL
+          keys: [cardNumber, card_number, pan, accountNumber, account_number]
+          keep-start: 4
+          keep-end: 4
+        - type: EMAIL
+          keys: [email, emailAddress, email_address]
+        - type: HASH
+          keys: [nationalId, national_id, phone, phoneNumber, phone_number]

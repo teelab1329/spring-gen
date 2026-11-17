@@ -27,6 +27,14 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Embedding loses file modes: `mvnw` must be written `0755` explicitly.
 - Boot/Java version defaults are single constants in Go. Templates never hardcode versions.
 - Generate into a staging dir and only move it into place after validation succeeds, so failures leave nothing behind.
+- The generated `HttpLoggingFilter` must stay registered at `Ordered.HIGHEST_PRECEDENCE + 10`: Spring Boot's tracing filter is at `+1`, and a lower order would put the logger outside it, dropping `[traceId-spanId]` from every line.
+- Tracing is log-correlation only. Never add an `opentelemetry-exporter-*` dependency; a Go test asserts the pom has none.
+
+## Logging
+- Every generated log line follows `[TYPE] message key : value, key : value`, with tags from `LogType`: `HTTP-REQUEST`, `HTTP-RESPONSE`, `BUSINESS-ERROR`, `SYSTEM-ERROR`, `RESTCLIENT-REQUEST`, `RESTCLIENT-RESPONSE`.
+- Keys are short and lowercase (`method`, `uri`, `status`, `duration`, `headers`, `body`, `data`, `error`); `uri` means path+query. Use SLF4J `{}` placeholders, never concatenation. Never put trace ids in the message — Spring Boot prefixes `[traceId-spanId]`.
+- Levels: HTTP/REST client INFO, `BUSINESS-ERROR` WARN without stack trace, `SYSTEM-ERROR` ERROR with stack trace. Add a tag to `LogType` and this rule before using it; `logrule_test.go` enforces both.
+- Masking is global, never per log call: `logback-spring.xml` redefines `%m` and registers `%maskedEx` (both are needed), and `app.logging.masking.rules` drive `LogMasker`. Do not reintroduce masking inside filters/interceptors; it would double-mask and miss other libraries.
 
 ## Cobra
 - Use the vendored skill `.agents/skills/golang-spf13-cobra` (pinned in `skills-lock.json`).
@@ -37,5 +45,5 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Run it: `go run ./cmd/spring-gen version`. Release builds inject version data with
   `-ldflags "-X github.com/teelab1329/spring-gen/internal/version.Version=vX.Y.Z"` (also `.Commit`, `.Date`); empty values fall back to Go's embedded build metadata.
 - Golden tests pin the rendered tree in `internal/generator/testdata/golden/**`. Regenerate with `make golden`, then review the diff; never hand-edit golden files.
-- `make e2e` runs the full flow for **both** architectures: generate, `./mvnw verify`, start the jar, then check `/actuator/health`, a JSend success, a 400 fail, and a 404 fail. Run it after touching templates or the generator; it needs network on first run.
+- `make e2e` runs the full flow for **both** architectures: generate, `./mvnw verify`, start the jar, then check `/actuator/health`, a JSend success, a 400 fail, a 404 fail, and the log lines (request/response, `[traceId-spanId]` prefix, `traceparent` continuation, `/actuator/**` not logged). Run it after touching templates or the generator; it needs network on first run.
 - The only JDK installed is 25, so generated projects are compiled with `--release 21` (via `<java.version>21</java.version>`). This is not proof the build works on a real JDK 21.

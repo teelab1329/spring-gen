@@ -16,12 +16,14 @@ func TestPackagePerArchitecture(t *testing.T) {
 		{"layered", RoleModel, "model"},
 		{"layered", RoleResponse, "common.response"},
 		{"layered", RoleHandler, "common.exception"},
+		{"layered", RoleLogging, "common.logging"},
 		{"clean", RoleController, "infrastructure.web"},
 		{"clean", RoleUseCase, "application.port.in"},
 		{"clean", RoleService, "application.service"},
 		{"clean", RoleModel, "domain.model"},
 		{"clean", RoleResponse, "infrastructure.web.response"},
 		{"clean", RoleException, "domain.exception"},
+		{"clean", RoleLogging, "infrastructure.logging"},
 	}
 
 	for _, test := range tests {

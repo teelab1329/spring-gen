@@ -1,5 +1,7 @@
 package com.acme.orderservice.infrastructure.web;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -10,7 +12,10 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.acme.orderservice.domain.exception.BusinessException;
 import com.acme.orderservice.domain.exception.ValidationException;
+import com.acme.orderservice.infrastructure.logging.LogType;
 import com.acme.orderservice.infrastructure.web.response.JSendResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Maps errors onto JSend {@code fail} and {@code error} responses.
@@ -21,6 +26,8 @@ import com.acme.orderservice.infrastructure.web.response.JSendResponse;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 	@ExceptionHandler(ValidationException.class)
 	public ResponseEntity<JSendResponse<Void>> handleValidation(ValidationException exception) {
@@ -43,6 +50,15 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(BusinessException.class)
 	public ResponseEntity<JSendResponse<Object>> handleBusiness(BusinessException exception) {
+		// Expected outcome: warn without a stack trace.
+		if (exception.getData() == null) {
+			log.warn("{} {} status : {}", LogType.BUSINESS_ERROR, exception.getMessage(),
+				exception.getStatus().value());
+		}
+		else {
+			log.warn("{} {} status : {}, data : {}", LogType.BUSINESS_ERROR, exception.getMessage(),
+				exception.getStatus().value(), exception.getData());
+		}
 		return ResponseEntity.status(exception.getStatus())
 			.body(JSendResponse.fail(exception.getData(), exception.getMessage()));
 	}
@@ -54,7 +70,10 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler(Exception.class)
-	public ResponseEntity<JSendResponse<Void>> handleUnexpected(Exception exception) {
+	public ResponseEntity<JSendResponse<Void>> handleUnexpected(Exception exception, HttpServletRequest request) {
+		// Unexpected outcome: error with the stack trace.
+		log.error("{} Unexpected error. method : {}, uri : {}, error : {}", LogType.SYSTEM_ERROR,
+			request.getMethod(), request.getRequestURI(), exception.toString(), exception);
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
 			.body(JSendResponse.error("Internal server error"));
 	}

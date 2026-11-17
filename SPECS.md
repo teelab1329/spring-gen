@@ -127,6 +127,7 @@ Layered (`layered`):
 | `service` | `service` |
 | `dto` | `dto` |
 | `controller` | `controller` |
+| `logging` | `common.logging` |
 
 Clean (`clean`):
 
@@ -140,6 +141,7 @@ Clean (`clean`):
 | `service` | `application.service` |
 | `dto` | `infrastructure.web.dto` |
 | `controller` | `infrastructure.web` |
+| `logging` | `infrastructure.logging` |
 
 Asking an architecture for a role it does not define is an error (layered has no
 `usecase`), so a template cannot silently land in the wrong package. Files land
@@ -195,6 +197,121 @@ Controllers return `ResponseEntity<JSendResponse<…>>` explicitly. A global
 `BusinessException` belong to the always-generated JSend code, not to the
 sample, so projects without the sample still compile.
 
+## 4.2 Logging and trace correlation
+
+Tracing exists **only** to annotate logs; nothing is exported.
+
+- `pom.xml` adds `io.micrometer:micrometer-tracing-bridge-otel` (version managed
+  by Boot). No `opentelemetry-exporter-*` dependency is generated, and a Go test
+  fails if one appears.
+- `management.tracing.sampling.probability: 1.0`, because a sampled-out request
+  would otherwise log no ids. Without an exporter the cost is negligible.
+- Log output stays plain text; Spring Boot's default correlation pattern already
+  prints `[traceId-spanId]`. An incoming W3C `traceparent` header is continued,
+  so the caller's trace id shows up in the logs.
+
+HTTP logging is always generated and toggled by property:
+
+```yaml
+app:
+  http-logging:
+    enabled: true
+    max-body-size: 10KB
+    exclude-paths: [/actuator/**]
+  logging:
+    masking:
+      enabled: true
+      rules:
+        - { type: FULL,    keys: [password, token, authorization, cookie, x-api-key] }
+        - { type: PARTIAL, keys: [cardNumber, pan], keep-start: 4, keep-end: 4 }
+        - { type: EMAIL,   keys: [email, emailAddress] }
+        - { type: HASH,    keys: [nationalId, phone] }
+```
+
+`HttpLoggingFilter` logs after the request completes:
+
+```
+[HTTP-REQUEST] method : GET, uri : /api/hello?name=Tee, headers : {accept=*/*, authorization=***}, body : 
+[HTTP-RESPONSE] method : GET, uri : /api/hello?name=Tee, status : 200, duration : 5ms, headers : {content-type=application/json}, body : {"status":"success",…}
+```
+
+### Global masking
+
+Masking is not done by the logging code; it happens in Logback, so it covers
+every log line, including framework and library output:
+
+- `logback-spring.xml` redefines `%m`/`%msg`/`%message` to `MaskingMessageConverter`
+  and registers `%maskedEx` (`MaskingThrowableConverter`), then includes Spring
+  Boot's `base.xml` unchanged, keeping the console pattern and
+  `[traceId-spanId]` prefix.
+- `logging.exception-conversion-word: "%maskedEx"` routes stack traces through
+  the masking converter. Both hooks are required; removing either silently
+  disables masking, and `make e2e` fails when that happens.
+- Logback constructs converters outside Spring, so `MaskingConfig` pushes the
+  rules into the static `LogMasker`. Lines logged before startup uses
+  `MaskingRule.defaults()`, which mirrors the YAML defaults.
+- Rules apply to key/value pairs in every shape:
+  `key=value`, `key: value`, `key:value`, JSON strings and numbers, header maps,
+  query strings, and XML elements. Keys are matched case-insensitively as whole
+  keys (`tokenizer=` is untouched).
+- Types: `FULL` → `***`; `PARTIAL` → keeps `keep-start`/`keep-end`, falls back
+  to `***` when the value is too short; `EMAIL` → `j*******@example.com`, falls
+  back to `***` when invalid; `HASH` → `sha256:<16 hex>`.
+- **HASH is plain SHA-256.** Short or guessable values (phone numbers, national
+  IDs) can be brute-forced. Use it for correlation, not secrecy.
+- Header masking is no longer part of `HttpLoggingProperties`: headers are
+  logged raw and the global masker redacts the configured keys.
+
+### Logging rule (applies to all generated code)
+
+Format: `[TYPE] <optional message> key : value, key : value`.
+
+- Tags live in `LogType` (role `logging`) and nowhere else:
+  `HTTP-REQUEST`, `HTTP-RESPONSE`, `BUSINESS-ERROR`, `SYSTEM-ERROR`,
+  `RESTCLIENT-REQUEST`, `RESTCLIENT-RESPONSE`. Add a tag to the rule (this file
+  and `AGENTS.md`) before using it.
+- Keys are short and lowercase: `method`, `uri`, `status`, `duration`,
+  `headers`, `body`, `data`, `error`. No dotted OpenTelemetry-style names.
+- `uri` is path + query for incoming requests and the full URL for outgoing
+  calls. `duration` renders as `5ms`. `headers` renders as `{name=value, …}`.
+- Use SLF4J `{}` placeholders; never concatenate values into the message.
+- Trace ids never appear in the message; Spring Boot prepends
+  `[traceId-spanId]`.
+- Levels: HTTP and REST client lines are INFO, `BUSINESS-ERROR` is WARN with no
+  stack trace, `SYSTEM-ERROR` is ERROR with the stack trace.
+- A Go test (`logrule_test.go`) fails if a template logs without a `LogType`
+  tag or if `LogType` misses a tag from the rule. Framework and library logs are
+  out of scope.
+
+`GlobalExceptionHandler` logs `BUSINESS-ERROR` for `BusinessException` (status
+and data, no stack trace) and `SYSTEM-ERROR` for anything unexpected (method,
+uri, exception, with stack trace). Validation, missing-parameter, and 404
+failures get no extra line; their `[HTTP-RESPONSE]` line already carries the
+status.
+
+`RestClientLoggingInterceptor` logs `[RESTCLIENT-REQUEST]` and
+`[RESTCLIENT-RESPONSE]` and is attached through Spring Boot's
+`RestClientCustomizer` and `RestTemplateCustomizer`, so clients built from the
+provided builders are covered. Clients created by hand (`RestClient.create()`,
+`new RestTemplate()`) bypass it. To log a response body the interceptor buffers
+it and hands the caller an identical copy; binary bodies are logged by size.
+
+Other HTTP logging details:
+
+- Masked headers (case-insensitive) render as `***`.
+- Text, JSON, XML and form bodies are logged; anything else renders as
+  `[binary N bytes]`. Responses over `max-body-size` are cut with
+  `…[truncated, N bytes]`; request bodies stop at the limit and say
+  `…[truncated at N bytes]` because the total is not buffered.
+- Newlines in bodies are escaped to `\n`, so one request cannot forge extra log
+  lines.
+- `text/event-stream` requests are not buffered or logged.
+- The filter is registered at `Ordered.HIGHEST_PRECEDENCE + 10`. Spring Boot's
+  tracing filter is at `+1`; a lower order places the logger outside it and every
+  line loses `[traceId-spanId]`. Do not change the order without an e2e check.
+- The response body is copied back in a `finally` block; dropping that call
+  returns empty responses to clients.
+
 ## 5. Template layout
 
 ```
@@ -204,7 +321,12 @@ internal/assets/
     base/                     pom.xml.tmpl, application.yml.tmpl, Main.java.tmpl,
                               ApplicationTests.java.tmpl, gitignore.tmpl, mvnw, mvnw.cmd,
                               mvn/wrapper/maven-wrapper.properties
-    jsend/                    JSendResponse, ValidationException, GlobalExceptionHandler
+    jsend/                    JSendResponse, ValidationException, BusinessException,
+                              GlobalExceptionHandler (+ test)
+    logging/                  LogType, HttpLoggingProperties, HttpLoggingConfig,
+                              HttpLoggingFilter, RestClientLoggingInterceptor,
+                              LogMasker + masking classes (+ tests)
+    base/logback-spring.xml.tmpl   global masking hooks
     sample/                   Greeting, HelloUseCase (clean only), HelloService,
                               HelloResponse, HelloController, HelloControllerTest
     web/ jpa/ validation/ …   planned feature directories

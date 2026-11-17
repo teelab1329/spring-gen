@@ -1,0 +1,18 @@
+package com.acme.orderservice.common.logging;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Pushes the masking rules into the static {@link LogMasker} used by the
+ * Logback converters.
+ */
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(MaskingProperties.class)
+public class MaskingConfig {
+
+	public MaskingConfig(MaskingProperties properties) {
+		LogMasker.configure(properties);
+	}
+
+}
