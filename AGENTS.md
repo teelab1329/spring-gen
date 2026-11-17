@@ -31,7 +31,7 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - `RunE` only, and write to `cmd.OutOrStdout()` / `cmd.ErrOrStderr()` so tests capture output.
 
 ## Verification
-- `go vet ./...` and `go test ./...`
+- `make verify` — gofmt check, `go vet ./...`, `go test ./...`. `make build` writes `bin/spring-gen` with version data from git.
 - Run it: `go run ./cmd/spring-gen version`. Release builds inject version data with
   `-ldflags "-X github.com/teelab1329/spring-gen/internal/version.Version=vX.Y.Z"` (also `.Commit`, `.Date`); empty values fall back to Go's embedded build metadata.
 - Golden tests per architecture × feature set: `go test ./... -update` rewrites `testdata/golden/**`; review that diff, never hand-edit golden files.
