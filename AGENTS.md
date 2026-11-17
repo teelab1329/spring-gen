@@ -14,10 +14,11 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Confirm with the user before starting work and before any action that is hard to undo (force-push, history rewrite, deleting files or branches, pushing). When scope or requirements are ambiguous, ask — do not guess.
 - Run the checks in **Verification** before proposing a merge. Report what ran and the result; never claim tests pass without running them.
 - Once checks pass, push the branch and open the merge request (PR) against `main` yourself, then ask the user to review. Never merge it and never enable auto-merge.
-- `origin` is GitHub. `gh` is installed but not authenticated; until `gh auth login` is run, open PRs via the printed compare URL (`https://github.com/teelab1329/spring-gen/compare/main...<branch>`).
+- `origin` is GitHub and `gh` is authenticated. Open PRs against `main` with `gh pr create --base main --head <branch>`; never merge them.
 
 ## Template model (the parts that bite)
-- Templates are grouped **by feature** and declare a logical role (`entity`, `controller`, `config`, …). Architecture code maps role + base package → output path. Templates must not contain output paths.
+- Templates are grouped **by feature** and declare a logical role (`controller`, `service`, `model`, …). `internal/generator/arch` maps role → Java package; templates ask with `{{ .Package "service" }}` and never hardcode a package or path. Asking an architecture for a role it lacks is an error.
+- Templates differ per architecture only inside `{{ if eq .Architecture "clean" }}` sections; never fork a whole template.
 - `pom.xml` and `application.yml` are assembled from per-feature contributions (dependency metadata in Go, YAML fragments merged). There is no "one pom per architecture".
 - The base package sets both the directory layout and `package`/`import` lines; imports differ by architecture, so derive them from the same mapping.
 - Name files `*.java.tmpl` so IntelliJ and Go tooling ignore them.
@@ -36,5 +37,5 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Run it: `go run ./cmd/spring-gen version`. Release builds inject version data with
   `-ldflags "-X github.com/teelab1329/spring-gen/internal/version.Version=vX.Y.Z"` (also `.Commit`, `.Date`); empty values fall back to Go's embedded build metadata.
 - Golden tests pin the rendered tree in `internal/generator/testdata/golden/**`. Regenerate with `make golden`, then review the diff; never hand-edit golden files.
-- `make e2e` generates a project, runs `./mvnw verify` on it, starts the jar, and requires `/actuator/health` to return `UP`. Run it after touching templates or the generator; it needs network on first run.
+- `make e2e` runs the full flow for **both** architectures: generate, `./mvnw verify`, start the jar, then check `/actuator/health`, a JSend success, a 400 fail, and a 404 fail. Run it after touching templates or the generator; it needs network on first run.
 - The only JDK installed is 25, so generated projects are compiled with `--release 21` (via `<java.version>21</java.version>`). This is not proof the build works on a real JDK 21.

@@ -9,48 +9,65 @@ import (
 
 var update = flag.Bool("update", false, "rewrite testdata/golden from the current templates")
 
-// TestGolden pins the full rendered output for a representative input. Run
-// `go test ./... -update` after template changes and review the diff.
+// TestGolden pins the full rendered output for each architecture and for a
+// project without the optional sample. Run `make golden` after template
+// changes and review the diff.
 func TestGolden(t *testing.T) {
-	output := t.TempDir()
-	result, err := Generate(Input{
-		Name:        "order-service",
-		Group:       "com.acme",
-		Description: "Order service",
-		Output:      output,
-	})
-	if err != nil {
-		t.Fatalf("Generate returned error: %v", err)
+	tests := []struct {
+		name     string
+		mutate   func(*Input)
+		goldenID string
+	}{
+		{"layered", func(*Input) {}, "layered-full"},
+		{"clean", func(in *Input) { in.Architecture = "clean" }, "clean-full"},
+		{"layered minimal", func(in *Input) {
+			in.VirtualThreads = false
+			in.Sample = false
+		}, "layered-minimal"},
 	}
 
-	goldenDir := filepath.Join("testdata", "golden", "basic")
-	got := readTree(t, result.Dir)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			in := validInput("order-service")
+			in.Description = "Order service"
+			in.Output = t.TempDir()
+			test.mutate(&in)
 
-	if *update {
-		if err := os.RemoveAll(goldenDir); err != nil {
-			t.Fatalf("reset golden dir: %v", err)
-		}
-		if err := writeTree(goldenDir, got); err != nil {
-			t.Fatalf("write golden dir: %v", err)
-		}
-	}
+			result, err := Generate(in)
+			if err != nil {
+				t.Fatalf("Generate returned error: %v", err)
+			}
 
-	want := readTree(t, goldenDir)
+			goldenDir := filepath.Join("testdata", "golden", test.goldenID)
+			got := readTree(t, result.Dir)
 
-	for path, wantData := range want {
-		gotData, ok := got[path]
-		if !ok {
-			t.Errorf("missing file %s", path)
-			continue
-		}
-		if string(gotData) != string(wantData) {
-			t.Errorf("content mismatch for %s", path)
-		}
-	}
-	for path := range got {
-		if _, ok := want[path]; !ok {
-			t.Errorf("unexpected file %s", path)
-		}
+			if *update {
+				if err := os.RemoveAll(goldenDir); err != nil {
+					t.Fatalf("reset golden dir: %v", err)
+				}
+				if err := writeTree(goldenDir, got); err != nil {
+					t.Fatalf("write golden dir: %v", err)
+				}
+			}
+
+			want := readTree(t, goldenDir)
+
+			for path, wantData := range want {
+				gotData, ok := got[path]
+				if !ok {
+					t.Errorf("missing file %s", path)
+					continue
+				}
+				if string(gotData) != string(wantData) {
+					t.Errorf("content mismatch for %s\n--- got ---\n%s\n--- want ---\n%s", path, gotData, wantData)
+				}
+			}
+			for path := range got {
+				if _, ok := want[path]; !ok {
+					t.Errorf("unexpected file %s", path)
+				}
+			}
+		})
 	}
 }
 

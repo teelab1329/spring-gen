@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	"github.com/teelab1329/spring-gen/internal/assets"
+	"github.com/teelab1329/spring-gen/internal/generator/arch"
 )
 
 // File is one rendered output file, before it is written to disk.
@@ -21,22 +22,66 @@ type File struct {
 }
 
 type templateEntry struct {
-	source string // path inside internal/assets/templates
-	target func(Data) string
+	source string                     // path inside internal/assets/templates
+	target func(Data) (string, error) // destination path
 	mode   fs.FileMode
+	when   func(Data) bool // optional condition on the resolved data
 }
+
+// fileTarget returns a fixed destination path.
+func fileTarget(dst string) func(Data) (string, error) {
+	return func(Data) (string, error) { return dst, nil }
+}
+
+// javaTarget places a file in the package the architecture assigns to role.
+func javaTarget(role arch.Role, file string, testFile bool) func(Data) (string, error) {
+	return func(d Data) (string, error) {
+		pkg, err := d.Package(string(role))
+		if err != nil {
+			return "", err
+		}
+		root := "src/main/java"
+		if testFile {
+			root = "src/test/java"
+		}
+		return path.Join(root, strings.ReplaceAll(pkg, ".", "/"), file), nil
+	}
+}
+
+func hasSample(d Data) bool { return d.Sample }
+
+func hasUseCase(d Data) bool { return d.Sample && d.Architecture == "clean" }
 
 // Templates ending in .tmpl are executed; everything else is copied verbatim
 // (the Maven wrapper scripts are large and contain no template syntax).
 var manifest = []templateEntry{
-	{source: "base/pom.xml.tmpl", target: func(Data) string { return "pom.xml" }},
-	{source: "base/application.yml.tmpl", target: func(Data) string { return "src/main/resources/application.yml" }},
-	{source: "base/Main.java.tmpl", target: func(d Data) string { return "src/main/java/" + d.BaseDir + "/" + d.ClassName + ".java" }},
-	{source: "base/ApplicationTests.java.tmpl", target: func(d Data) string { return "src/test/java/" + d.BaseDir + "/" + d.ClassName + "Tests.java" }},
-	{source: "base/gitignore.tmpl", target: func(Data) string { return ".gitignore" }},
-	{source: "base/mvnw", target: func(Data) string { return "mvnw" }, mode: 0o755},
-	{source: "base/mvnw.cmd", target: func(Data) string { return "mvnw.cmd" }},
-	{source: "base/mvn/wrapper/maven-wrapper.properties", target: func(Data) string { return ".mvn/wrapper/maven-wrapper.properties" }},
+	{source: "base/pom.xml.tmpl", target: fileTarget("pom.xml")},
+	{source: "base/application.yml.tmpl", target: fileTarget("src/main/resources/application.yml")},
+	{source: "base/Main.java.tmpl", target: func(d Data) (string, error) {
+		return path.Join("src/main/java", d.BaseDir, d.ClassName+".java"), nil
+	}},
+	{source: "base/ApplicationTests.java.tmpl", target: func(d Data) (string, error) {
+		return path.Join("src/test/java", d.BaseDir, d.ClassName+"Tests.java"), nil
+	}},
+	{source: "base/gitignore.tmpl", target: fileTarget(".gitignore")},
+	{source: "base/mvnw", target: fileTarget("mvnw"), mode: 0o755},
+	{source: "base/mvnw.cmd", target: fileTarget("mvnw.cmd")},
+	{source: "base/mvn/wrapper/maven-wrapper.properties", target: fileTarget(".mvn/wrapper/maven-wrapper.properties")},
+
+	// JSend envelope and error handling: always generated.
+	{source: "jsend/JSendResponse.java.tmpl", target: javaTarget(arch.RoleResponse, "JSendResponse.java", false)},
+	{source: "jsend/ValidationException.java.tmpl", target: javaTarget(arch.RoleException, "ValidationException.java", false)},
+	{source: "jsend/BusinessException.java.tmpl", target: javaTarget(arch.RoleException, "BusinessException.java", false)},
+	{source: "jsend/GlobalExceptionHandler.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandler.java", false)},
+	{source: "jsend/GlobalExceptionHandlerTest.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandlerTest.java", true)},
+
+	// Hello sample: optional, and the use case port only exists in clean.
+	{source: "sample/Greeting.java.tmpl", target: javaTarget(arch.RoleModel, "Greeting.java", false), when: hasSample},
+	{source: "sample/HelloUseCase.java.tmpl", target: javaTarget(arch.RoleUseCase, "HelloUseCase.java", false), when: hasUseCase},
+	{source: "sample/HelloService.java.tmpl", target: javaTarget(arch.RoleService, "HelloService.java", false), when: hasSample},
+	{source: "sample/HelloResponse.java.tmpl", target: javaTarget(arch.RoleDTO, "HelloResponse.java", false), when: hasSample},
+	{source: "sample/HelloController.java.tmpl", target: javaTarget(arch.RoleController, "HelloController.java", false), when: hasSample},
+	{source: "sample/HelloControllerTest.java.tmpl", target: javaTarget(arch.RoleController, "HelloControllerTest.java", true), when: hasSample},
 }
 
 var funcs = template.FuncMap{
@@ -45,12 +90,16 @@ var funcs = template.FuncMap{
 	"pascal": Pascal,
 }
 
-// Render executes every template in the manifest and returns the files sorted
-// by path. It touches no filesystem state.
+// Render executes every applicable template and returns the files sorted by
+// path. It touches no filesystem state.
 func Render(data Data) ([]File, error) {
 	files := make([]File, 0, len(manifest))
 
 	for _, entry := range manifest {
+		if entry.when != nil && !entry.when(data) {
+			continue
+		}
+
 		raw, err := fs.ReadFile(assets.Templates, path.Join("templates", entry.source))
 		if err != nil {
 			return nil, fmt.Errorf("read template %s: %w", entry.source, err)
@@ -64,8 +113,13 @@ func Render(data Data) ([]File, error) {
 			}
 		}
 
+		target, err := entry.target(data)
+		if err != nil {
+			return nil, fmt.Errorf("resolve path for %s: %w", entry.source, err)
+		}
+
 		files = append(files, File{
-			Path: path.Clean(entry.target(data)),
+			Path: path.Clean(target),
 			Data: content,
 			Mode: entry.mode,
 		})

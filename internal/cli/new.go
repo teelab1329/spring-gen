@@ -10,15 +10,19 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/teelab1329/spring-gen/internal/generator"
+	"github.com/teelab1329/spring-gen/internal/generator/arch"
 	"github.com/teelab1329/spring-gen/internal/prompt"
 )
 
 type newOptions struct {
-	group         string
-	description   string
-	output        string
-	force         bool
-	noInteractive bool
+	group          string
+	description    string
+	architecture   string
+	virtualThreads bool
+	sample         bool
+	output         string
+	force          bool
+	noInteractive  bool
 
 	// interactive is the terminal check; tests replace it to script answers.
 	interactive func(io.Reader) bool
@@ -44,19 +48,29 @@ func newNewCmdWithOptions(opts newOptions) *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.group, "group", "", "Maven groupId and Java package prefix (e.g. com.acme)")
 	flags.StringVar(&opts.description, "description", "", "Project description (default \"<name> service\")")
+	flags.StringVar(&opts.architecture, "architecture", "", "Project architecture: "+strings.Join(arch.IDList(), " or "))
+	flags.BoolVar(&opts.virtualThreads, "virtual-threads", true, "Enable virtual threads (use --virtual-threads=false to disable)")
+	flags.BoolVar(&opts.sample, "sample", true, "Include the sample Hello endpoint (use --sample=false to disable)")
 	flags.StringVar(&opts.output, "output", ".", "Directory that will contain the new project")
 	flags.BoolVar(&opts.force, "force", false, "Replace the target directory if it already exists")
 	flags.BoolVar(&opts.noInteractive, "no-interactive", false, "Never prompt; fail when required values are missing")
+
+	_ = cmd.RegisterFlagCompletionFunc("architecture", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return arch.IDList(), cobra.ShellCompDirectiveNoFileComp
+	})
 
 	return cmd
 }
 
 func runNew(cmd *cobra.Command, args []string, opts newOptions) error {
 	in := generator.Input{
-		Group:       strings.TrimSpace(opts.group),
-		Description: strings.TrimSpace(opts.description),
-		Output:      opts.output,
-		Force:       opts.force,
+		Group:          strings.TrimSpace(opts.group),
+		Description:    strings.TrimSpace(opts.description),
+		Architecture:   strings.TrimSpace(opts.architecture),
+		VirtualThreads: opts.virtualThreads,
+		Sample:         opts.sample,
+		Output:         opts.output,
+		Force:          opts.force,
 	}
 	if len(args) > 0 {
 		in.Name = strings.TrimSpace(args[0])
@@ -92,6 +106,9 @@ func missingValues(in generator.Input) []string {
 	}
 	if in.Group == "" {
 		missing = append(missing, "--group")
+	}
+	if in.Architecture == "" {
+		missing = append(missing, "--architecture")
 	}
 	return missing
 }
@@ -132,6 +149,38 @@ func fillInteractively(cmd *cobra.Command, in *generator.Input) error {
 			return abortErr("description", err)
 		}
 		in.Description = answer
+	}
+
+	if in.Architecture != "" {
+		if _, err := arch.Get(in.Architecture); err != nil {
+			return err
+		}
+	} else {
+		options := make([]prompt.Option, 0, len(arch.All()))
+		for _, architecture := range arch.All() {
+			options = append(options, prompt.Option{Value: architecture.ID(), Label: architecture.Name()})
+		}
+		answer, err := prompter.Choose("Architecture", options, "")
+		if err != nil {
+			return abortErr("architecture", err)
+		}
+		in.Architecture = answer
+	}
+
+	if !cmd.Flags().Changed("virtual-threads") {
+		answer, err := prompter.Confirm("Enable virtual threads?", true)
+		if err != nil {
+			return abortErr("virtual threads", err)
+		}
+		in.VirtualThreads = answer
+	}
+
+	if !cmd.Flags().Changed("sample") {
+		answer, err := prompter.Confirm("Include a sample Hello endpoint?", true)
+		if err != nil {
+			return abortErr("sample", err)
+		}
+		in.Sample = answer
 	}
 
 	return nil
