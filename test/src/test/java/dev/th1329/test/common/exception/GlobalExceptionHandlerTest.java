@@ -1,0 +1,82 @@
+package dev.th1329.test.common.exception;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import dev.th1329.test.common.exception.BusinessException;
+
+/**
+ * Exercises the advice without a Spring context: the controller and advice are
+ * wired directly, so the test stays fast and independent of the architecture.
+ */
+class GlobalExceptionHandlerTest {
+
+	private final MockMvc mockMvc = MockMvcBuilders
+		.standaloneSetup(new TestController())
+		.setControllerAdvice(new GlobalExceptionHandler())
+		.build();
+
+	@Test
+	void rendersBusinessFailWithData() throws Exception {
+		mockMvc.perform(get("/test/conflict"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.status").value("fail"))
+			.andExpect(jsonPath("$.message").value("Item SKU-1 is out of stock."))
+			.andExpect(jsonPath("$.data.sku").value("SKU-1"));
+	}
+
+	@Test
+	void rendersBusinessFailWithoutData() throws Exception {
+		mockMvc.perform(get("/test/missing"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.status").value("fail"))
+			.andExpect(jsonPath("$.message").value("Customer 42 does not exist."))
+			.andExpect(jsonPath("$.data").doesNotExist());
+	}
+
+	@Test
+	void rendersUnexpectedFailureAsError() throws Exception {
+		mockMvc.perform(get("/test/boom"))
+			.andExpect(status().isInternalServerError())
+			.andExpect(jsonPath("$.status").value("error"))
+			.andExpect(jsonPath("$.message").value("Internal server error"));
+	}
+
+	@Test
+	void rejectsNonClientErrorStatus() {
+		assertThrows(IllegalArgumentException.class,
+			() -> new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "not a client error"));
+	}
+
+	@RestController
+	static class TestController {
+
+		@GetMapping("/test/conflict")
+		void conflict() {
+			throw new BusinessException(HttpStatus.CONFLICT, "Item SKU-1 is out of stock.", Map.of("sku", "SKU-1"));
+		}
+
+		@GetMapping("/test/missing")
+		void missing() {
+			throw new BusinessException(HttpStatus.NOT_FOUND, "Customer 42 does not exist.");
+		}
+
+		@GetMapping("/test/boom")
+		void boom() {
+			throw new IllegalStateException("boom");
+		}
+
+	}
+
+}

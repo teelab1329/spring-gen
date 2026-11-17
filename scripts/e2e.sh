@@ -132,8 +132,8 @@ run_case() {
 		"http://127.0.0.1:$port/api/hello?name=Trace"
 
 	local logfile="$work/app-$port.log"
-	check_log "[$architecture] request logged" "$logfile" 'HTTP request http.request.method=GET url.full=http://127.0.0.1:'"$port"'/api/hello'
-	check_log "[$architecture] response logged" "$logfile" 'HTTP response .*http.response.status_code=200'
+	check_log "[$architecture] request logged" "$logfile" '\[HTTP-REQUEST\] method : GET, uri : /api/hello'
+	check_log "[$architecture] response logged" "$logfile" '\[HTTP-RESPONSE\] method : GET, uri : /api/hello.*status : 200'
 	check_log "[$architecture] trace correlation" "$logfile" '\[[0-9a-f]{32}-[0-9a-f]{16}\]'
 	check_log "[$architecture] traceparent continued" "$logfile" '4bf92f3577b34da6a3ce929d0e0e4736'
 	check_log_absent "[$architecture] actuator not logged" "$logfile" '/actuator/health'

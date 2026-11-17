@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import jakarta.servlet.ServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import ch.qos.logback.classic.Logger;
@@ -53,13 +54,11 @@ class HttpLoggingFilterTest {
 
 		String logs = logs();
 		assertThat(logs)
-			.contains("HTTP request")
-			.contains("http.request.method=GET")
-			.contains("url.full=http://localhost/api/hello?name=Tee")
-			.contains("authorization=" + "[***]")
-			.contains("HTTP response")
-			.contains("http.response.status_code=200")
-			.contains("body={\"status\":\"success\"}");
+			.contains("[HTTP-REQUEST] method : GET, uri : /api/hello?name=Tee")
+			.contains("authorization=***")
+			.contains("[HTTP-RESPONSE] method : GET, uri : /api/hello?name=Tee, status : 200")
+			.contains("duration : ")
+			.contains("body : {\"status\":\"success\"}");
 
 		assertThat(response.getContentAsByteArray())
 			.isEqualTo("{\"status\":\"success\"}".getBytes(StandardCharsets.UTF_8));
@@ -87,7 +86,7 @@ class HttpLoggingFilterTest {
 			.doFilter(request, response, (req, res) -> readBody(req));
 
 		assertThat(logs())
-			.contains("body=0123456789...[truncated at 10 bytes]")
+			.contains("body : 0123456789...[truncated at 10 bytes]")
 			.doesNotContain("0123456789abcdefghij0123456789abcdefghij");
 	}
 
@@ -100,7 +99,7 @@ class HttpLoggingFilterTest {
 
 		filter(properties()).doFilter(request, response, (req, res) -> readBody(req));
 
-		assertThat(logs()).contains("body=[binary 4 bytes]");
+		assertThat(logs()).contains("body : [binary 4 bytes]");
 	}
 
 	@Test
@@ -113,11 +112,11 @@ class HttpLoggingFilterTest {
 		filter(new HttpLoggingProperties(true, DataSize.ofKilobytes(10), List.of(), List.of()))
 			.doFilter(request, response, (req, res) -> readBody(req));
 
-		assertThat(logs()).contains("body=first\\nsecond");
+		assertThat(logs()).contains("body : first\\nsecond");
 	}
 
 	/** Simulates a controller consuming the request body. */
-	private static void readBody(jakarta.servlet.ServletRequest request) throws java.io.IOException {
+	private static void readBody(ServletRequest request) throws java.io.IOException {
 		request.getInputStream().readAllBytes();
 	}
 

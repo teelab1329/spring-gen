@@ -221,15 +221,50 @@ app:
     exclude-paths: [/actuator/**]
 ```
 
-`HttpLoggingFilter` logs after the request completes, one line each:
+`HttpLoggingFilter` logs after the request completes:
 
 ```
-HTTP request  http.request.method=GET url.full=http://localhost:8080/api/hello?name=Tee headers=[accept=[*/*], authorization=[***]] body=
-HTTP response http.request.method=GET url.full=… http.response.status_code=200 duration=5ms headers=[content-type=[application/json]] body={"status":"success",…}
+[HTTP-REQUEST] method : GET, uri : /api/hello?name=Tee, headers : {accept=*/*, authorization=***}, body : 
+[HTTP-RESPONSE] method : GET, uri : /api/hello?name=Tee, status : 200, duration : 5ms, headers : {content-type=application/json}, body : {"status":"success",…}
 ```
 
-- Field names follow the OpenTelemetry HTTP semantic conventions.
-- Masked headers (case-insensitive) render as `[***]`.
+### Logging rule (applies to all generated code)
+
+Format: `[TYPE] <optional message> key : value, key : value`.
+
+- Tags live in `LogType` (role `logging`) and nowhere else:
+  `HTTP-REQUEST`, `HTTP-RESPONSE`, `BUSINESS-ERROR`, `SYSTEM-ERROR`,
+  `RESTCLIENT-REQUEST`, `RESTCLIENT-RESPONSE`. Add a tag to the rule (this file
+  and `AGENTS.md`) before using it.
+- Keys are short and lowercase: `method`, `uri`, `status`, `duration`,
+  `headers`, `body`, `data`, `error`. No dotted OpenTelemetry-style names.
+- `uri` is path + query for incoming requests and the full URL for outgoing
+  calls. `duration` renders as `5ms`. `headers` renders as `{name=value, …}`.
+- Use SLF4J `{}` placeholders; never concatenate values into the message.
+- Trace ids never appear in the message; Spring Boot prepends
+  `[traceId-spanId]`.
+- Levels: HTTP and REST client lines are INFO, `BUSINESS-ERROR` is WARN with no
+  stack trace, `SYSTEM-ERROR` is ERROR with the stack trace.
+- A Go test (`logrule_test.go`) fails if a template logs without a `LogType`
+  tag or if `LogType` misses a tag from the rule. Framework and library logs are
+  out of scope.
+
+`GlobalExceptionHandler` logs `BUSINESS-ERROR` for `BusinessException` (status
+and data, no stack trace) and `SYSTEM-ERROR` for anything unexpected (method,
+uri, exception, with stack trace). Validation, missing-parameter, and 404
+failures get no extra line; their `[HTTP-RESPONSE]` line already carries the
+status.
+
+`RestClientLoggingInterceptor` logs `[RESTCLIENT-REQUEST]` and
+`[RESTCLIENT-RESPONSE]` and is attached through Spring Boot's
+`RestClientCustomizer` and `RestTemplateCustomizer`, so clients built from the
+provided builders are covered. Clients created by hand (`RestClient.create()`,
+`new RestTemplate()`) bypass it. To log a response body the interceptor buffers
+it and hands the caller an identical copy; binary bodies are logged by size.
+
+Other HTTP logging details:
+
+- Masked headers (case-insensitive) render as `***`.
 - Text, JSON, XML and form bodies are logged; anything else renders as
   `[binary N bytes]`. Responses over `max-body-size` are cut with
   `…[truncated, N bytes]`; request bodies stop at the limit and say

@@ -30,6 +30,11 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - The generated `HttpLoggingFilter` must stay registered at `Ordered.HIGHEST_PRECEDENCE + 10`: Spring Boot's tracing filter is at `+1`, and a lower order would put the logger outside it, dropping `[traceId-spanId]` from every line.
 - Tracing is log-correlation only. Never add an `opentelemetry-exporter-*` dependency; a Go test asserts the pom has none.
 
+## Logging
+- Every generated log line follows `[TYPE] message key : value, key : value`, with tags from `LogType`: `HTTP-REQUEST`, `HTTP-RESPONSE`, `BUSINESS-ERROR`, `SYSTEM-ERROR`, `RESTCLIENT-REQUEST`, `RESTCLIENT-RESPONSE`.
+- Keys are short and lowercase (`method`, `uri`, `status`, `duration`, `headers`, `body`, `data`, `error`); `uri` means path+query. Use SLF4J `{}` placeholders, never concatenation. Never put trace ids in the message — Spring Boot prefixes `[traceId-spanId]`.
+- Levels: HTTP/REST client INFO, `BUSINESS-ERROR` WARN without stack trace, `SYSTEM-ERROR` ERROR with stack trace. Add a tag to `LogType` and this rule before using it; `logrule_test.go` enforces both.
+
 ## Cobra
 - Use the vendored skill `.agents/skills/golang-spf13-cobra` (pinned in `skills-lock.json`).
 - `RunE` only, and write to `cmd.OutOrStdout()` / `cmd.ErrOrStderr()` so tests capture output.
