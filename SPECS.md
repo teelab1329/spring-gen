@@ -34,8 +34,20 @@ spring-gen version
 
 `<name>` is the project directory name and, by default, the artifactId.
 
-Exit codes: `0` success, `1` generation/validation failure, `2` usage error
-(Cobra default for flag parsing). No stack traces on user error.
+Exit codes: `0` success, `1` any failure (usage, validation, generation). Errors
+are printed once by `main` as `spring-gen: <message>`; Cobra's usage text is
+silenced. No stack traces on user error.
+
+`spring-gen version` (and `--version`) print one line:
+
+```
+spring-gen v0.1.0 (commit 4f2a91c3b7d1, built 2026-11-17T10:00:00Z, go1.27.3 linux/amd64)
+```
+
+Version, commit, and date come from `-ldflags -X …/internal/version.{Version,Commit,Date}`
+and fall back to `debug.ReadBuildInfo` (module version, `vcs.revision`,
+`vcs.time`); unset values render as `dev` / `unknown`. Commits are shortened to
+12 characters.
 
 ### 2.1 Interaction rules
 
