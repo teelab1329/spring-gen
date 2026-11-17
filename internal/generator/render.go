@@ -75,6 +75,12 @@ var manifest = []templateEntry{
 	{source: "jsend/GlobalExceptionHandler.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandler.java", false)},
 	{source: "jsend/GlobalExceptionHandlerTest.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandlerTest.java", true)},
 
+	// HTTP request/response logging (always generated, toggled by property).
+	{source: "logging/HttpLoggingProperties.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingProperties.java", false)},
+	{source: "logging/HttpLoggingConfig.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingConfig.java", false)},
+	{source: "logging/HttpLoggingFilter.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingFilter.java", false)},
+	{source: "logging/HttpLoggingFilterTest.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingFilterTest.java", true)},
+
 	// Hello sample: optional, and the use case port only exists in clean.
 	{source: "sample/Greeting.java.tmpl", target: javaTarget(arch.RoleModel, "Greeting.java", false), when: hasSample},
 	{source: "sample/HelloUseCase.java.tmpl", target: javaTarget(arch.RoleUseCase, "HelloUseCase.java", false), when: hasUseCase},

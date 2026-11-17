@@ -127,6 +127,7 @@ Layered (`layered`):
 | `service` | `service` |
 | `dto` | `dto` |
 | `controller` | `controller` |
+| `logging` | `common.logging` |
 
 Clean (`clean`):
 
@@ -140,6 +141,7 @@ Clean (`clean`):
 | `service` | `application.service` |
 | `dto` | `infrastructure.web.dto` |
 | `controller` | `infrastructure.web` |
+| `logging` | `infrastructure.logging` |
 
 Asking an architecture for a role it does not define is an error (layered has no
 `usecase`), so a template cannot silently land in the wrong package. Files land
@@ -195,6 +197,52 @@ Controllers return `ResponseEntity<JSendResponse<…>>` explicitly. A global
 `BusinessException` belong to the always-generated JSend code, not to the
 sample, so projects without the sample still compile.
 
+## 4.2 Logging and trace correlation
+
+Tracing exists **only** to annotate logs; nothing is exported.
+
+- `pom.xml` adds `io.micrometer:micrometer-tracing-bridge-otel` (version managed
+  by Boot). No `opentelemetry-exporter-*` dependency is generated, and a Go test
+  fails if one appears.
+- `management.tracing.sampling.probability: 1.0`, because a sampled-out request
+  would otherwise log no ids. Without an exporter the cost is negligible.
+- Log output stays plain text; Spring Boot's default correlation pattern already
+  prints `[traceId-spanId]`. An incoming W3C `traceparent` header is continued,
+  so the caller's trace id shows up in the logs.
+
+HTTP logging is always generated and toggled by property:
+
+```yaml
+app:
+  http-logging:
+    enabled: true
+    max-body-size: 10KB
+    masked-headers: [authorization, cookie, set-cookie, proxy-authorization, x-api-key]
+    exclude-paths: [/actuator/**]
+```
+
+`HttpLoggingFilter` logs after the request completes, one line each:
+
+```
+HTTP request  http.request.method=GET url.full=http://localhost:8080/api/hello?name=Tee headers=[accept=[*/*], authorization=[***]] body=
+HTTP response http.request.method=GET url.full=… http.response.status_code=200 duration=5ms headers=[content-type=[application/json]] body={"status":"success",…}
+```
+
+- Field names follow the OpenTelemetry HTTP semantic conventions.
+- Masked headers (case-insensitive) render as `[***]`.
+- Text, JSON, XML and form bodies are logged; anything else renders as
+  `[binary N bytes]`. Responses over `max-body-size` are cut with
+  `…[truncated, N bytes]`; request bodies stop at the limit and say
+  `…[truncated at N bytes]` because the total is not buffered.
+- Newlines in bodies are escaped to `\n`, so one request cannot forge extra log
+  lines.
+- `text/event-stream` requests are not buffered or logged.
+- The filter is registered at `Ordered.HIGHEST_PRECEDENCE + 10`. Spring Boot's
+  tracing filter is at `+1`; a lower order places the logger outside it and every
+  line loses `[traceId-spanId]`. Do not change the order without an e2e check.
+- The response body is copied back in a `finally` block; dropping that call
+  returns empty responses to clients.
+
 ## 5. Template layout
 
 ```
@@ -204,7 +252,10 @@ internal/assets/
     base/                     pom.xml.tmpl, application.yml.tmpl, Main.java.tmpl,
                               ApplicationTests.java.tmpl, gitignore.tmpl, mvnw, mvnw.cmd,
                               mvn/wrapper/maven-wrapper.properties
-    jsend/                    JSendResponse, ValidationException, GlobalExceptionHandler
+    jsend/                    JSendResponse, ValidationException, BusinessException,
+                              GlobalExceptionHandler (+ test)
+    logging/                  HttpLoggingProperties, HttpLoggingConfig,
+                              HttpLoggingFilter (+ test)
     sample/                   Greeting, HelloUseCase (clean only), HelloService,
                               HelloResponse, HelloController, HelloControllerTest
     web/ jpa/ validation/ …   planned feature directories

@@ -54,8 +54,7 @@ start_app() {
 }
 
 # check_response <label> <url> <expected status> <expected body fragment> [forbidden fragment]
-check_response() {
-	local label="$1" url="$2" want_status="$3" want_body="$4" forbidden="${5:-}"
+check_response() {	local label="$1" url="$2" want_status="$3" want_body="$4" forbidden="${5:-}"
 	local response status body
 
 	response="$(curl -s -w '\n%{http_code}' "$url")"
@@ -72,6 +71,27 @@ check_response() {
 	fi
 	if [[ -n "$forbidden" && "$body" == *"$forbidden"* ]]; then
 		echo "e2e: $label: body '$body' must not contain '$forbidden'" >&2
+		return 1
+	fi
+	echo "e2e: $label ok"
+}
+
+# check_log <label> <logfile> <extended regex>
+check_log() {
+	local label="$1" logfile="$2" pattern="$3"
+	if ! grep -qE "$pattern" "$logfile"; then
+		echo "e2e: $label: no log line matching '$pattern'" >&2
+		tail -n 30 "$logfile" >&2
+		return 1
+	fi
+	echo "e2e: $label ok"
+}
+
+# check_log_absent <label> <logfile> <fixed string>
+check_log_absent() {
+	local label="$1" logfile="$2" pattern="$3"
+	if grep -qF "$pattern" "$logfile"; then
+		echo "e2e: $label: log contains '$pattern' but should not" >&2
 		return 1
 	fi
 	echo "e2e: $label ok"
@@ -105,6 +125,18 @@ run_case() {
 	check_response "[$architecture] hello success" "http://127.0.0.1:$port/api/hello?name=Tee" 200 '"message":"Hello, Tee!"'
 	check_response "[$architecture] validation fail" "http://127.0.0.1:$port/api/hello?name=%20" 400 '"message":"Name must not be blank."' '"data"'
 	check_response "[$architecture] unknown path" "http://127.0.0.1:$port/api/nope" 404 '"message":"Resource not found: /api/nope"' '"data"'
+
+	# Send a request with a known traceparent and confirm the log continues it.
+	curl -s -o /dev/null \
+		-H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+		"http://127.0.0.1:$port/api/hello?name=Trace"
+
+	local logfile="$work/app-$port.log"
+	check_log "[$architecture] request logged" "$logfile" 'HTTP request http.request.method=GET url.full=http://127.0.0.1:'"$port"'/api/hello'
+	check_log "[$architecture] response logged" "$logfile" 'HTTP response .*http.response.status_code=200'
+	check_log "[$architecture] trace correlation" "$logfile" '\[[0-9a-f]{32}-[0-9a-f]{16}\]'
+	check_log "[$architecture] traceparent continued" "$logfile" '4bf92f3577b34da6a3ce929d0e0e4736'
+	check_log_absent "[$architecture] actuator not logged" "$logfile" '/actuator/health'
 
 	stop_app
 }

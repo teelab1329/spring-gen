@@ -17,6 +17,7 @@ const (
 	RoleService    Role = "service"    // implementation
 	RoleDTO        Role = "dto"        // web response DTOs
 	RoleController Role = "controller" // HTTP entry points
+	RoleLogging    Role = "logging"    // cross-cutting HTTP logging
 )
 
 // Architecture is one named role-to-package mapping. Packages are suffixes
@@ -55,6 +56,7 @@ var registry = []Architecture{
 			RoleService:    "service",
 			RoleDTO:        "dto",
 			RoleController: "controller",
+			RoleLogging:    "common.logging",
 		},
 	},
 	{
@@ -69,6 +71,7 @@ var registry = []Architecture{
 			RoleService:    "application.service",
 			RoleDTO:        "infrastructure.web.dto",
 			RoleController: "infrastructure.web",
+			RoleLogging:    "infrastructure.logging",
 		},
 	},
 }

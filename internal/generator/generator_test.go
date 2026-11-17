@@ -3,6 +3,7 @@ package generator
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -136,6 +137,8 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		"src/main/java/com/acme/orderservice/common/response/JSendResponse.java",
 		"src/main/java/com/acme/orderservice/common/exception/GlobalExceptionHandler.java",
 		"src/test/java/com/acme/orderservice/common/exception/GlobalExceptionHandlerTest.java",
+		"src/main/java/com/acme/orderservice/common/logging/HttpLoggingFilter.java",
+		"src/test/java/com/acme/orderservice/common/logging/HttpLoggingFilterTest.java",
 		"src/main/java/com/acme/orderservice/controller/HelloController.java",
 		"src/main/java/com/acme/orderservice/service/HelloService.java",
 		"src/test/java/com/acme/orderservice/controller/HelloControllerTest.java",
@@ -158,10 +161,15 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		"<description>Orders</description>",
 		"spring-boot-starter-web",
 		"spring-boot-starter-actuator",
+		"micrometer-tracing-bridge-otel",
 	} {
 		if !strings.Contains(string(pom), want) {
 			t.Errorf("pom.xml does not contain %q", want)
 		}
+	}
+	exporterDependency := regexp.MustCompile(`<artifactId>[^<]*exporter[^<]*</artifactId>`)
+	if exporterDependency.Match(pom) {
+		t.Errorf("pom.xml must not declare a trace exporter:\n%s", pom)
 	}
 
 	info, err := os.Stat(filepath.Join(result.Dir, "mvnw"))
@@ -197,6 +205,7 @@ func TestGenerateCleanArchitecture(t *testing.T) {
 		"src/main/java/com/acme/orderservice/infrastructure/web/HelloController.java",
 		"src/main/java/com/acme/orderservice/infrastructure/web/response/JSendResponse.java",
 		"src/main/java/com/acme/orderservice/infrastructure/web/dto/HelloResponse.java",
+		"src/main/java/com/acme/orderservice/infrastructure/logging/HttpLoggingFilter.java",
 		"src/test/java/com/acme/orderservice/infrastructure/web/HelloControllerTest.java",
 	} {
 		if _, err := os.Stat(filepath.Join(result.Dir, filepath.FromSlash(path))); err != nil {
