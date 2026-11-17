@@ -1,0 +1,45 @@
+package {{ .Package "restclient" }};
+
+import java.time.Duration;
+import java.util.Map;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+/**
+ * Connection-pool settings for outbound REST clients.
+ *
+ * <p>{@code defaults} applies to every client; each entry under {@code clients}
+ * may override any value and must set {@code base-url}.</p>
+ */
+@ConfigurationProperties("app.rest-clients")
+public record RestClientProperties(Defaults defaults, Map<String, Client> clients) {
+
+	public RestClientProperties {
+		defaults = defaults == null ? new Defaults(null, null, null, 0, 0, null, null, null) : defaults;
+		clients = clients == null ? Map.of() : Map.copyOf(clients);
+	}
+
+	public record Defaults(Duration connectTimeout, Duration readTimeout, Duration connectionRequestTimeout,
+			int maxConnections, int maxConnectionsPerRoute, Duration timeToLive,
+			Duration validateAfterInactivity, Duration evictIdleAfter) {
+
+		public Defaults {
+			connectTimeout = connectTimeout == null ? Duration.ofSeconds(2) : connectTimeout;
+			readTimeout = readTimeout == null ? Duration.ofSeconds(5) : readTimeout;
+			connectionRequestTimeout = connectionRequestTimeout == null ? Duration.ofSeconds(1) : connectionRequestTimeout;
+			maxConnections = maxConnections <= 0 ? 50 : maxConnections;
+			maxConnectionsPerRoute = maxConnectionsPerRoute <= 0 ? 20 : maxConnectionsPerRoute;
+			timeToLive = timeToLive == null ? Duration.ofMinutes(5) : timeToLive;
+			validateAfterInactivity = validateAfterInactivity == null ? Duration.ofSeconds(2) : validateAfterInactivity;
+			evictIdleAfter = evictIdleAfter == null ? Duration.ofSeconds(30) : evictIdleAfter;
+		}
+
+	}
+
+	/** One downstream service. Only {@code baseUrl} is required. */
+	public record Client(String baseUrl, Duration connectTimeout, Duration readTimeout,
+			Duration connectionRequestTimeout, Integer maxConnections, Integer maxConnectionsPerRoute,
+			Duration timeToLive, Duration validateAfterInactivity, Duration evictIdleAfter) {
+	}
+
+}

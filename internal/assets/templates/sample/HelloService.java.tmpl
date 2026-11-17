@@ -5,17 +5,33 @@ import org.springframework.stereotype.Service;
 import {{ .Package "exception" }}.ValidationException;
 import {{ .Package "model" }}.Greeting;
 {{- if eq .Architecture "clean" }}
+import {{ .Package "outport" }}.GreetingGateway;
 import {{ .Package "usecase" }}.HelloUseCase;
+{{- else }}
+import {{ .Package "client" }}.GreetingClient;
 {{- end }}
 
 @Service
 public class HelloService{{ if eq .Architecture "clean" }} implements HelloUseCase{{ end }} {
+
+	private final {{ if eq .Architecture "clean" }}GreetingGateway{{ else }}GreetingClient{{ end }} greetingGateway;
+
+	public HelloService({{ if eq .Architecture "clean" }}GreetingGateway{{ else }}GreetingClient{{ end }} greetingGateway) {
+		this.greetingGateway = greetingGateway;
+	}
 
 	public Greeting greet(String name) {
 		if (name == null || name.isBlank()) {
 			throw new ValidationException("Name must not be blank.");
 		}
 		return new Greeting("Hello, " + name.trim() + "!");
+	}
+
+	public Greeting remoteGreeting(String name) {
+		if (name == null || name.isBlank()) {
+			throw new ValidationException("Name must not be blank.");
+		}
+		return greetingGateway.greet(name.trim());
 	}
 
 }
