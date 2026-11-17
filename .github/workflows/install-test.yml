@@ -1,13 +1,20 @@
 name: Install test
 
 on:
-  release:
-    types: [published]
+  # Releases created with GITHUB_TOKEN do not emit `release: published`, so the
+  # Release workflow calls this one instead of relying on that event.
+  workflow_call:
+    inputs:
+      version:
+        description: Release tag to install
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       version:
         description: Release tag to install
         required: false
+        type: string
 
 permissions:
   contents: read
@@ -26,7 +33,7 @@ jobs:
       - name: Install (Unix)
         if: runner.os != 'Windows'
         env:
-          VERSION: ${{ github.event.release.tag_name || inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           curl -fsSL "https://raw.githubusercontent.com/teelab1329/spring-gen/main/scripts/install.sh" \
             | sh -s -- ${VERSION:+--version "$VERSION"}
@@ -36,7 +43,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          VERSION: ${{ github.event.release.tag_name || inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           $script = irm "https://raw.githubusercontent.com/teelab1329/spring-gen/main/scripts/install.ps1"
           if ($env:VERSION) {

@@ -34,3 +34,12 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  install-test:
+    name: install test
+    needs: release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/install-test.yml
+    with:
+      version: ${{ github.ref_name }}

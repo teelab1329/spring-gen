@@ -63,11 +63,18 @@ try {
     }
 
     $checksums = Get-Content (Join-Path $temp 'checksums.txt')
-    $line = $checksums | Where-Object { $_ -match "\s+\Q$asset\E$" } | Select-Object -First 1
-    if (-not $line) {
+    # .NET regex has no \Q...\E quoting, so match the file name field directly.
+    $expected = $null
+    foreach ($entry in $checksums) {
+        $parts = $entry -split '\s+', 2
+        if ($parts.Count -eq 2 -and $parts[1].Trim() -eq $asset) {
+            $expected = $parts[0]
+            break
+        }
+    }
+    if (-not $expected) {
         throw "install: checksums.txt has no entry for $asset"
     }
-    $expected = ($line -split '\s+')[0]
     $actual = (Get-FileHash (Join-Path $temp $asset) -Algorithm SHA256).Hash
     if ($actual -ne $expected) {
         throw "install: checksum mismatch for $asset (expected $expected, actual $actual)"
