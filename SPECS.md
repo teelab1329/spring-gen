@@ -12,7 +12,7 @@ each file and where it is written. No network access, no Spring Initializr.
 ## 2. CLI surface
 
 ```
-spring-gen new <name> [flags]
+spring-gen new [name] [flags]
 spring-gen list [architectures|features]
 spring-gen version
 ```
@@ -53,10 +53,16 @@ and fall back to `debug.ReadBuildInfo` (module version, `vcs.revision`,
 
 ### 2.1 Interaction rules
 
-- Prompt only for values not supplied by flags.
+- Prompt only for values not supplied by flags or arguments.
 - Prompts go to stderr; results and summaries go to stdout.
-- If stdin is not a TTY, or `--no-interactive` is set, treat every unanswered
-  required value as an error: `missing required flags: --group --architecture`.
+- An empty answer to a required question is re-asked (`  group is required`), and
+  an invalid answer is re-asked with the validation message. Nothing is written
+  until every value is valid.
+- Flag values are validated but never re-prompted: `--group acme` fails fast.
+- End of input (Ctrl-D, empty pipe) aborts with
+  `aborted: no input for <field>`; no project directory is created.
+- If stdin is not a TTY, or `--no-interactive` is set, list every missing value
+  in one error: `missing required values: <name> argument, --group`.
 - Fully-flagged runs must be usable from CI, so keep prompt output out of stdout.
 
 Prompt implementation: plain `bufio` line prompts in `internal/prompt`. Prompts

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,19 +19,25 @@ type newOptions struct {
 	output        string
 	force         bool
 	noInteractive bool
+
+	// interactive is the terminal check; tests replace it to script answers.
+	interactive func(io.Reader) bool
 }
 
 func newNewCmd() *cobra.Command {
-	var opts newOptions
+	return newNewCmdWithOptions(newOptions{interactive: isInteractive})
+}
 
+func newNewCmdWithOptions(opts newOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "new <name>",
+		Use:   "new [name]",
 		Short: "Generate a new Spring Boot service",
 		Long: "Generate a runnable Spring Boot service from the embedded templates.\n\n" +
+			"Missing values are prompted for on a terminal; use --no-interactive to fail instead.\n\n" +
 			"The project targets Java " + generator.JavaVersion + " and Spring Boot " + generator.BootVersion + ".",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runNew(cmd, args[0], opts)
+			return runNew(cmd, args, opts)
 		},
 	}
 
@@ -44,37 +51,27 @@ func newNewCmd() *cobra.Command {
 	return cmd
 }
 
-func runNew(cmd *cobra.Command, name string, opts newOptions) error {
+func runNew(cmd *cobra.Command, args []string, opts newOptions) error {
 	in := generator.Input{
-		Name:        name,
 		Group:       strings.TrimSpace(opts.group),
 		Description: strings.TrimSpace(opts.description),
 		Output:      opts.output,
 		Force:       opts.force,
 	}
-
-	interactive := !opts.noInteractive && isInteractive(cmd.InOrStdin())
-
-	if in.Group == "" && !interactive {
-		return fmt.Errorf("missing required flags: --group")
+	if len(args) > 0 {
+		in.Name = strings.TrimSpace(args[0])
 	}
 
-	prompter := &prompt.Prompt{In: cmd.InOrStdin(), Out: cmd.ErrOrStderr()}
-
-	if in.Group == "" {
-		answer, err := prompter.Ask("Group (e.g. com.acme)", "")
-		if err != nil {
-			return fmt.Errorf("read group: %w", err)
-		}
-		in.Group = answer
+	interactive := opts.interactive
+	if interactive == nil {
+		interactive = isInteractive
 	}
-
-	if interactive && in.Description == "" {
-		answer, err := prompter.Ask("Description", name+" service")
-		if err != nil {
-			return fmt.Errorf("read description: %w", err)
+	if !opts.noInteractive && interactive(cmd.InOrStdin()) {
+		if err := fillInteractively(cmd, &in); err != nil {
+			return err
 		}
-		in.Description = answer
+	} else if missing := missingValues(in); len(missing) > 0 {
+		return fmt.Errorf("missing required values: %s", strings.Join(missing, ", "))
 	}
 
 	result, err := generator.Generate(in)
@@ -84,6 +81,87 @@ func runNew(cmd *cobra.Command, name string, opts newOptions) error {
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Created %s\n", result.Dir)
 	return nil
+}
+
+// missingValues lists the required inputs that were neither passed as flags
+// nor as arguments.
+func missingValues(in generator.Input) []string {
+	var missing []string
+	if in.Name == "" {
+		missing = append(missing, "<name> argument")
+	}
+	if in.Group == "" {
+		missing = append(missing, "--group")
+	}
+	return missing
+}
+
+// fillInteractively asks for every value the flags left empty. Flag values are
+// validated but never re-prompted: a script that passes a bad --group should
+// fail, not become an interactive session.
+func fillInteractively(cmd *cobra.Command, in *generator.Input) error {
+	prompter := &prompt.Prompt{In: cmd.InOrStdin(), Out: cmd.ErrOrStderr()}
+
+	if in.Name != "" {
+		if err := generator.ValidateName(in.Name); err != nil {
+			return err
+		}
+	} else {
+		name, err := askRequired(prompter, "name", "Service name (e.g. order-service)", generator.ValidateName)
+		if err != nil {
+			return err
+		}
+		in.Name = name
+	}
+
+	if in.Group != "" {
+		if err := generator.ValidateGroup(in.Group); err != nil {
+			return err
+		}
+	} else {
+		group, err := askRequired(prompter, "group", "Group (e.g. com.acme)", generator.ValidateGroup)
+		if err != nil {
+			return err
+		}
+		in.Group = group
+	}
+
+	if in.Description == "" {
+		answer, err := prompter.Ask("Description", in.Name+" service")
+		if err != nil {
+			return abortErr("description", err)
+		}
+		in.Description = answer
+	}
+
+	return nil
+}
+
+// askRequired repeats the question until validate accepts a non-empty answer.
+func askRequired(p *prompt.Prompt, field, label string, validate func(string) error) (string, error) {
+	for {
+		answer, err := p.Ask(label, "")
+		if err != nil {
+			return "", abortErr(field, err)
+		}
+		if answer == "" {
+			fmt.Fprintf(p.Out, "  %s is required\n", field)
+			continue
+		}
+		if err := validate(answer); err != nil {
+			fmt.Fprintf(p.Out, "  %v\n", err)
+			continue
+		}
+		return answer, nil
+	}
+}
+
+// abortErr turns end-of-input into a clear message instead of looping forever.
+func abortErr(field string, err error) error {
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("aborted: no input for %s", field)
+	}
+	return err
 }
 
 // isInteractive reports whether in is a terminal. Non-terminal input (CI,

@@ -42,6 +42,11 @@ func (p *Prompt) Ask(label, def string) (string, error) {
 
 	answer := strings.TrimSpace(line)
 	if answer == "" {
+		if errors.Is(err, io.EOF) {
+			// Nothing arrived at all (Ctrl-D, empty pipe): let the caller abort
+			// instead of inventing an empty answer.
+			return "", io.EOF
+		}
 		return def, nil
 	}
 	return answer, nil

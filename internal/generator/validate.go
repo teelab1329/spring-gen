@@ -66,6 +66,18 @@ func validatePackage(pkg string) error {
 	return nil
 }
 
+// ValidateName reports whether name can be used as the project name and
+// artifactId.
+func ValidateName(name string) error {
+	return validateName(name)
+}
+
+// ValidateGroup reports whether group can be used as a Maven groupId and as the
+// Java package prefix.
+func ValidateGroup(group string) error {
+	return validateGroup(group)
+}
+
 // Pascal converts a kebab-case name to PascalCase: order-service -> OrderService.
 func Pascal(name string) string {
 	parts := strings.Split(name, "-")

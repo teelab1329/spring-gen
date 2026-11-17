@@ -7,7 +7,7 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Generated projects: **Maven only** (`pom.xml` + wrapper). No Gradle.
 - Architectures: **layered** and **clean**. Extend the architecture mapping; never duplicate templates per architecture.
 - Fully offline: no network calls at generation time, never call start.spring.io.
-- Input: flags first, prompt for whatever is missing. Non-TTY or `--no-interactive` must fail with a list of missing flags, never block on stdin.
+- Input: flags first, prompt for whatever is missing and re-ask invalid answers; explicit flag values are validated but never re-prompted. Non-TTY or `--no-interactive` must fail listing every missing value, never block on stdin.
 
 ## Workflow (required, not optional)
 - The default branch is `main` (also `origin`'s default). Never commit to it directly. Branch from `main` first: `feat/…`, `fix/…`, `docs/…`.
