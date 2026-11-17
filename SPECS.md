@@ -158,7 +158,9 @@ JSend classes are always generated; the Hello sample is optional (`--sample`).
 - blank `name` → `ValidationException` → `400 {"status":"fail","message":"Name must not be blank."}`
 - missing parameter → `400 {"status":"fail","message":"Missing required parameter 'name'."}`
 - wrong parameter type → `400 {"status":"fail","message":"Invalid value for parameter 'page'."}`
-- `BusinessException(message, data)` → `422 {"status":"fail","message":"…","data":{…}}`
+- `BusinessException(status, message[, data])` → fail with the caller's status:
+  `409 {"status":"fail","message":"…","data":{…}}`,
+  `404 {"status":"fail","message":"…"}` when data is null
 - unknown path → `404 {"status":"fail","message":"Resource not found: /api/nope"}`
 - unexpected exception → `500 {"status":"error","message":"Internal server error"}`
 
@@ -166,6 +168,21 @@ JSend classes are always generated; the Hello sample is optional (`--sample`).
 only, so request-level failures omit it entirely; `BusinessException` is the one
 way to attach data to a fail. Messages are full sentences (`Name must not be
 blank.`), and `ValidationException` takes only the message.
+
+`BusinessException` takes an `HttpStatus` and the handler answers with it. The
+status is always explicit (no hidden default) and must be a 4xx: JSend `fail`
+means the client can fix the request, while 5xx belongs to `error`. The
+constructor rejects anything else with `IllegalArgumentException`.
+
+```java
+throw new BusinessException(HttpStatus.CONFLICT, "Item SKU-1 is out of stock.", Map.of("sku", "SKU-1"));
+throw new BusinessException(HttpStatus.NOT_FOUND, "Customer 42 does not exist.");
+```
+
+Trade-off accepted: in the `clean` architecture the exception lives in
+`domain.exception`, so importing `HttpStatus` leaks a web type into the domain.
+Keeping the status choice at the call site was worth it; a transport-neutral
+status code was considered and rejected.
 
 This deviates from the JSend specification, which puts fail details in `data`
 and defines no `message` for `fail`. The deviation is intentional: keep the

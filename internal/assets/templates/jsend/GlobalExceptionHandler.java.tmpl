@@ -43,7 +43,7 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(BusinessException.class)
 	public ResponseEntity<JSendResponse<Object>> handleBusiness(BusinessException exception) {
-		return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+		return ResponseEntity.status(exception.getStatus())
 			.body(JSendResponse.fail(exception.getData(), exception.getMessage()));
 	}
 

@@ -73,6 +73,7 @@ var manifest = []templateEntry{
 	{source: "jsend/ValidationException.java.tmpl", target: javaTarget(arch.RoleException, "ValidationException.java", false)},
 	{source: "jsend/BusinessException.java.tmpl", target: javaTarget(arch.RoleException, "BusinessException.java", false)},
 	{source: "jsend/GlobalExceptionHandler.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandler.java", false)},
+	{source: "jsend/GlobalExceptionHandlerTest.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandlerTest.java", true)},
 
 	// Hello sample: optional, and the use case port only exists in clean.
 	{source: "sample/Greeting.java.tmpl", target: javaTarget(arch.RoleModel, "Greeting.java", false), when: hasSample},

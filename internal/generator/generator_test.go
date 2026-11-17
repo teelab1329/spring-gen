@@ -135,6 +135,7 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		"src/main/java/com/acme/orderservice/OrderServiceApplication.java",
 		"src/main/java/com/acme/orderservice/common/response/JSendResponse.java",
 		"src/main/java/com/acme/orderservice/common/exception/GlobalExceptionHandler.java",
+		"src/test/java/com/acme/orderservice/common/exception/GlobalExceptionHandlerTest.java",
 		"src/main/java/com/acme/orderservice/controller/HelloController.java",
 		"src/main/java/com/acme/orderservice/service/HelloService.java",
 		"src/test/java/com/acme/orderservice/controller/HelloControllerTest.java",
@@ -243,8 +244,8 @@ func TestGenerateWithoutSampleKeepsJSend(t *testing.T) {
 		switch {
 		case strings.Contains(file, "Hello"), strings.Contains(file, "Greeting"):
 			t.Errorf("sample file %s generated with --sample=false", file)
-		case strings.Contains(file, "JSendResponse"), strings.Contains(file, "GlobalExceptionHandler"):
-			// expected
+		case strings.Contains(file, "JSendResponse"), strings.Contains(file, "GlobalExceptionHandler"), strings.Contains(file, "BusinessException"):
+			// expected: JSend support is always generated
 		}
 	}
 
