@@ -229,7 +229,8 @@ app:
         - { type: HASH,    keys: [nationalId, phone] }
 ```
 
-`HttpLoggingFilter` logs after the request completes:
+`HttpLoggingFilter` logs the request before it is handled and the response after,
+so one trace reads as request → business logs → response:
 
 ```
 [HTTP-REQUEST] method : GET, uri : /api/hello?name=Tee, headers : {accept=*/*, authorization=***}, body : 
@@ -262,6 +263,15 @@ every log line, including framework and library output:
   IDs) can be brute-forced. Use it for correlation, not secrecy.
 - Header masking is no longer part of `HttpLoggingProperties`: headers are
   logged raw and the global masker redacts the configured keys.
+- `[HTTP-REQUEST]` is logged first, then anything the request logs
+  (`[SECURITY-ERROR]`, `[BUSINESS-ERROR]`, `[RESTCLIENT-*]`), then
+  `[HTTP-RESPONSE]`. To get the body before the handler runs,
+  `BodyPeekingRequest` reads at most `max-body-size + 1` bytes and replays them
+  ahead of the untouched remainder, so memory stays bounded and the controller
+  still receives the full body.
+- Form posts are not read early: the filter logs `request.getParameterMap()`
+  because Tomcat parses form bodies from its own stream. Binary and multipart
+  bodies are never read and log as `[binary N bytes]`. Event streams are skipped.
 
 ### Logging rule (applies to all generated code)
 

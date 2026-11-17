@@ -139,6 +139,7 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		"src/main/java/com/acme/orderservice/common/exception/GlobalExceptionHandler.java",
 		"src/test/java/com/acme/orderservice/common/exception/GlobalExceptionHandlerTest.java",
 		"src/main/java/com/acme/orderservice/common/logging/HttpLoggingFilter.java",
+		"src/main/java/com/acme/orderservice/common/logging/BodyPeekingRequest.java",
 		"src/main/java/com/acme/orderservice/common/logging/LogMasker.java",
 		"src/main/java/com/acme/orderservice/common/logging/MaskingConfig.java",
 		"src/main/java/com/acme/orderservice/common/logging/LogType.java",

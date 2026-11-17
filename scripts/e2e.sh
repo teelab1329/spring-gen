@@ -136,6 +136,28 @@ check_log() {
 	echo "e2e: $label ok"
 }
 
+# check_log_order <label> <logfile> <pattern>...
+# Each pattern must match a line, and the lines must appear in this order.
+check_log_order() {
+	local label="$1" logfile="$2"
+	shift 2
+	local previous=0 pattern line
+	for pattern in "$@"; do
+		line="$(grep -nE "$pattern" "$logfile" | head -n1 | cut -d: -f1)"
+		if [[ -z "$line" ]]; then
+			echo "e2e: $label: no log line matching '$pattern'" >&2
+			tail -n 30 "$logfile" >&2
+			return 1
+		fi
+		if (( line <= previous )); then
+			echo "e2e: $label: '$pattern' is out of order (line $line after $previous)" >&2
+			return 1
+		fi
+		previous="$line"
+	done
+	echo "e2e: $label ok"
+}
+
 # check_log_absent <label> <logfile> <fixed string>
 check_log_absent() {
 	local label="$1" logfile="$2" pattern="$3"
@@ -193,6 +215,10 @@ run_case() {
 	assert_response "[$architecture] tampered body rejected" "${tampered##*$'\n'}" "${tampered%$'\n'*}" \
 		401 '"message":"Invalid request signature."'
 
+	# A rejected request with its own trace id, for log-order checks.
+	curl -s -o /dev/null -H 'traceparent: 00-33333333333333333333333333333333-4444444444444444-01' \
+		"http://127.0.0.1:$port/api/hello?name=Tee"
+
 	# A signed remote call: exercises the pooled client, signing, logging, masking.
 	local request_id timestamp signature
 	request_id="$(cat /proc/sys/kernel/random/uuid)"
@@ -224,6 +250,16 @@ run_case() {
 	check_log_absent "[$architecture] no clear password" "$logfile" 'hunter2'
 	check_log_absent "[$architecture] no clear token" "$logfile" 'topsecret'
 	check_log "[$architecture] security rejection logged" "$logfile" '\[SECURITY-ERROR\] (Missing header|Invalid request signature|Request timestamp)'
+
+	check_log_order "[$architecture] rejection log order" "$logfile" \
+		'33333333333333333333333333333333-[0-9a-f]{16}.*\[HTTP-REQUEST\].*uri : /api/hello' \
+		'33333333333333333333333333333333-[0-9a-f]{16}.*\[SECURITY-ERROR\]' \
+		'33333333333333333333333333333333-[0-9a-f]{16}.*\[HTTP-RESPONSE\].*status : 401'
+	check_log_order "[$architecture] remote flow log order" "$logfile" \
+		'11111111111111111111111111111111-[0-9a-f]{16}.*\[HTTP-REQUEST\].*uri : /api/hello/remote' \
+		'11111111111111111111111111111111-[0-9a-f]{16}.*\[RESTCLIENT-REQUEST\]' \
+		'11111111111111111111111111111111-[0-9a-f]{16}.*\[RESTCLIENT-RESPONSE\]' \
+		'11111111111111111111111111111111-[0-9a-f]{16}.*\[HTTP-RESPONSE\].*uri : /api/hello/remote'
 
 	check_log "[$architecture] rest client request" "$logfile" '\[RESTCLIENT-REQUEST\] method : GET, uri : http://localhost:'"$port"'/api/hello\?name=Tee'
 	check_log "[$architecture] rest client response" "$logfile" '\[RESTCLIENT-RESPONSE\] method : GET, uri : http://localhost:'"$port"'/api/hello\?name=Tee, status : 200'

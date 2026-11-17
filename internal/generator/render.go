@@ -92,6 +92,7 @@ var manifest = []templateEntry{
 	// HTTP request/response logging (always generated, toggled by property).
 	{source: "logging/LogType.java.tmpl", target: javaTarget(arch.RoleLogging, "LogType.java", false)},
 	{source: "logging/HttpLoggingSupport.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingSupport.java", false)},
+	{source: "logging/BodyPeekingRequest.java.tmpl", target: javaTarget(arch.RoleLogging, "BodyPeekingRequest.java", false)},
 	{source: "logging/HttpLoggingProperties.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingProperties.java", false)},
 	{source: "logging/HttpLoggingConfig.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingConfig.java", false)},
 	{source: "logging/HttpLoggingFilter.java.tmpl", target: javaTarget(arch.RoleLogging, "HttpLoggingFilter.java", false)},

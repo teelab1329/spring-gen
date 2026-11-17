@@ -15,12 +15,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 
 /**
- * Logs one {@code [HTTP-REQUEST]} and one {@code [HTTP-RESPONSE]} line per
- * request. See the logging rule in AGENTS.md.
+ * Logs {@code [HTTP-REQUEST]} before the request is handled and
+ * {@code [HTTP-RESPONSE]} after it, so the log reads as request → business →
+ * response. See the logging rule in AGENTS.md.
  *
  * <p>The trace id comes from the MDC, filled by Micrometer Tracing, so these
  * lines share the {@code [traceId-spanId]} prefix of the other application
@@ -51,30 +51,44 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 			throws ServletException, IOException {
-		int limit = (int) Math.min(properties.maxBodySize().toBytes(), Integer.MAX_VALUE);
-		// One extra byte tells "exactly at the limit" apart from "truncated".
-		int cacheLimit = limit == Integer.MAX_VALUE ? limit : limit + 1;
-		ContentCachingRequestWrapper cachedRequest = new ContentCachingRequestWrapper(request, cacheLimit);
+		long start = System.nanoTime();
 		ContentCachingResponseWrapper cachedResponse = new ContentCachingResponseWrapper(response);
 
-		long start = System.nanoTime();
+		HttpServletRequest effectiveRequest = request;
+		String requestBody;
+		MediaType mediaType = HttpLoggingSupport.parseMediaType(request.getContentType());
+
+		if (isFormEncoded(mediaType)) {
+			// Do not read the stream: Tomcat parses form bodies from its own stream.
+			requestBody = formBody(request);
+		}
+		else if (mediaType == null || HttpLoggingSupport.isTextual(mediaType)) {
+			BodyPeekingRequest peeking = new BodyPeekingRequest(request, limit());
+			effectiveRequest = peeking;
+			requestBody = HttpLoggingSupport.body(properties, peeking.loggable(), mediaType, -1, peeking.truncated());
+		}
+		else {
+			requestBody = binaryBody(request);
+		}
+
+		// Logged before the handler runs, so business logs follow the request line.
+		logRequest(request, requestBody);
+
 		try {
-			chain.doFilter(cachedRequest, cachedResponse);
+			chain.doFilter(effectiveRequest, cachedResponse);
 		}
 		finally {
 			long durationMillis = (System.nanoTime() - start) / 1_000_000;
-			logRequest(cachedRequest);
-			logResponse(cachedRequest, cachedResponse, durationMillis);
+			logResponse(request, cachedResponse, durationMillis);
 			// Without this the client receives an empty body.
 			cachedResponse.copyBodyToResponse();
 		}
 	}
 
-	private void logRequest(ContentCachingRequestWrapper request) {
+	private void logRequest(HttpServletRequest request, String body) {
 		log.info("{} method : {}, uri : {}, headers : {}, body : {}", LogType.HTTP_REQUEST,
 			request.getMethod(), HttpLoggingSupport.uri(request),
-			HttpLoggingSupport.headers(requestHeaders(request)),
-			HttpLoggingSupport.body(properties, request.getContentAsByteArray(), request.getContentType(), -1));
+			HttpLoggingSupport.headers(requestHeaders(request)), body);
 	}
 
 	private void logResponse(HttpServletRequest request, ContentCachingResponseWrapper response, long durationMillis) {
@@ -83,6 +97,25 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
 			LogType.HTTP_RESPONSE, request.getMethod(), HttpLoggingSupport.uri(request), response.getStatus(),
 			durationMillis, HttpLoggingSupport.headers(responseHeaders(response)),
 			HttpLoggingSupport.body(properties, content, response.getContentType(), content.length));
+	}
+
+	private int limit() {
+		return (int) Math.min(properties.maxBodySize().toBytes(), Integer.MAX_VALUE);
+	}
+
+	private static boolean isFormEncoded(MediaType mediaType) {
+		return mediaType != null && MediaType.APPLICATION_FORM_URLENCODED.isCompatibleWith(mediaType);
+	}
+
+	private static String formBody(HttpServletRequest request) {
+		Map<String, List<String>> parameters = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+		request.getParameterMap().forEach((name, values) -> parameters.put(name, List.of(values)));
+		return HttpLoggingSupport.headers(parameters);
+	}
+
+	private static String binaryBody(HttpServletRequest request) {
+		long length = request.getContentLengthLong();
+		return length >= 0 ? "[binary " + length + " bytes]" : "[binary]";
 	}
 
 	private static Map<String, List<String>> requestHeaders(HttpServletRequest request) {
