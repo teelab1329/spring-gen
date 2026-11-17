@@ -31,8 +31,10 @@ jobs:
       - name: PowerShell analyzer
         shell: pwsh
         run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          }
           $issues = Invoke-ScriptAnalyzer -Path scripts/install.ps1 -Severity Error, Warning
           $issues | Format-Table -AutoSize
           if ($issues) { exit 1 }

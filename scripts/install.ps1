@@ -21,6 +21,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Write-Information is off by default in some hosts; keep our progress visible.
+$InformationPreference = 'Continue'
 
 # Windows PowerShell 5.1 defaults to TLS 1.0, which GitHub rejects.
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -51,7 +53,7 @@ try {
     $asset = "spring-gen_windows_$arch.zip"
     New-Item -ItemType Directory -Path $temp -Force | Out-Null
 
-    Write-Host "install: downloading $asset from $baseUrl"
+    Write-Information "install: downloading $asset from $baseUrl"
     try {
         Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile (Join-Path $temp $asset) -UseBasicParsing
         Invoke-WebRequest -Uri "$baseUrl/checksums.txt" -OutFile (Join-Path $temp 'checksums.txt') -UseBasicParsing
@@ -87,13 +89,13 @@ try {
     if ($pathEntries -notcontains $InstallDir) {
         $newPath = if ($userPath) { "$userPath;$InstallDir" } else { $InstallDir }
         [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-        Write-Host "install: added $InstallDir to your user PATH (open a new terminal to use it)"
+        Write-Information "install: added $InstallDir to your user PATH (open a new terminal to use it)"
     }
     if (($env:Path -split ';') -notcontains $InstallDir) {
         $env:Path = "$env:Path;$InstallDir"
     }
 
-    Write-Host "install: installed $target"
+    Write-Information "install: installed $target"
     & $target version
 }
 finally {
