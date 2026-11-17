@@ -155,15 +155,28 @@ architecture-independent.
 JSend classes are always generated; the Hello sample is optional (`--sample`).
 
 - `GET /api/hello?name=Tee` → `200 {"status":"success","data":{"message":"Hello, Tee!"}}`
-- blank `name` → `ValidationException` → `400 {"status":"fail","data":{"name":"must not be blank"}}`
-- missing/invalid parameter → `400` fail; unknown path → `404` fail
+- blank `name` → `ValidationException` → `400 {"status":"fail","message":"Name must not be blank."}`
+- missing parameter → `400 {"status":"fail","message":"Missing required parameter 'name'."}`
+- wrong parameter type → `400 {"status":"fail","message":"Invalid value for parameter 'page'."}`
+- `BusinessException(message, data)` → `422 {"status":"fail","message":"…","data":{…}}`
+- unknown path → `404 {"status":"fail","message":"Resource not found: /api/nope"}`
 - unexpected exception → `500 {"status":"error","message":"Internal server error"}`
+
+`message` is always the human-readable text. `data` holds business information
+only, so request-level failures omit it entirely; `BusinessException` is the one
+way to attach data to a fail. Messages are full sentences (`Name must not be
+blank.`), and `ValidationException` takes only the message.
+
+This deviates from the JSend specification, which puts fail details in `data`
+and defines no `message` for `fail`. The deviation is intentional: keep the
+human text in `message`, and treat `data` as business payload. Do not "fix" it
+back without asking.
 
 Controllers return `ResponseEntity<JSendResponse<…>>` explicitly. A global
 `ResponseBodyAdvice` wrapper was rejected because it would also wrap
-`/actuator/health` and plain-string responses. `ValidationException` belongs to
-the always-generated JSend code, not to the sample, so projects without the
-sample still compile.
+`/actuator/health` and plain-string responses. `ValidationException` and
+`BusinessException` belong to the always-generated JSend code, not to the
+sample, so projects without the sample still compile.
 
 ## 5. Template layout
 

@@ -1,19 +1,13 @@
 package {{ .Package "exception" }};
 
 /**
- * A request value failed validation. Rendered as a JSend {@code fail} response.
+ * A request value failed validation. The message is human readable and is
+ * rendered as the JSend {@code message}; the response carries no {@code data}.
  */
 public class ValidationException extends RuntimeException {
 
-	private final String field;
-
-	public ValidationException(String field, String message) {
+	public ValidationException(String message) {
 		super(message);
-		this.field = field;
-	}
-
-	public String getField() {
-		return field;
 	}
 
 }

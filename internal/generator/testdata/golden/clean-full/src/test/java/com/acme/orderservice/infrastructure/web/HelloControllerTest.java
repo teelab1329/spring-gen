@@ -28,18 +28,21 @@ class HelloControllerTest {
 	}
 
 	@Test
-	void returnsFailForBlankName() throws Exception {
+	void returnsFailWithReadableMessageForBlankName() throws Exception {
 		mockMvc.perform(get("/api/hello").param("name", " "))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.status").value("fail"))
-			.andExpect(jsonPath("$.data.name").value("must not be blank"));
+			.andExpect(jsonPath("$.message").value("Name must not be blank."))
+			.andExpect(jsonPath("$.data").doesNotExist());
 	}
 
 	@Test
 	void returnsFailForMissingName() throws Exception {
 		mockMvc.perform(get("/api/hello"))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.status").value("fail"));
+			.andExpect(jsonPath("$.status").value("fail"))
+			.andExpect(jsonPath("$.message").value("Missing required parameter 'name'."))
+			.andExpect(jsonPath("$.data").doesNotExist());
 	}
 
 }

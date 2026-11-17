@@ -53,9 +53,9 @@ start_app() {
 	return 1
 }
 
-# check_response <label> <url> <expected status> <expected body fragment>
+# check_response <label> <url> <expected status> <expected body fragment> [forbidden fragment]
 check_response() {
-	local label="$1" url="$2" want_status="$3" want_body="$4"
+	local label="$1" url="$2" want_status="$3" want_body="$4" forbidden="${5:-}"
 	local response status body
 
 	response="$(curl -s -w '\n%{http_code}' "$url")"
@@ -68,6 +68,10 @@ check_response() {
 	fi
 	if [[ "$body" != *"$want_body"* ]]; then
 		echo "e2e: $label: body '$body' does not contain '$want_body'" >&2
+		return 1
+	fi
+	if [[ -n "$forbidden" && "$body" == *"$forbidden"* ]]; then
+		echo "e2e: $label: body '$body' must not contain '$forbidden'" >&2
 		return 1
 	fi
 	echo "e2e: $label ok"
@@ -99,8 +103,8 @@ run_case() {
 
 	check_response "[$architecture] health" "http://127.0.0.1:$port/actuator/health" 200 '"status":"UP"'
 	check_response "[$architecture] hello success" "http://127.0.0.1:$port/api/hello?name=Tee" 200 '"message":"Hello, Tee!"'
-	check_response "[$architecture] validation fail" "http://127.0.0.1:$port/api/hello?name=%20" 400 '"status":"fail"'
-	check_response "[$architecture] unknown path" "http://127.0.0.1:$port/api/nope" 404 '"status":"fail"'
+	check_response "[$architecture] validation fail" "http://127.0.0.1:$port/api/hello?name=%20" 400 '"message":"Name must not be blank."' '"data"'
+	check_response "[$architecture] unknown path" "http://127.0.0.1:$port/api/nope" 404 '"message":"Resource not found: /api/nope"' '"data"'
 
 	stop_app
 }

@@ -10,7 +10,7 @@ public class HelloService {
 
 	public Greeting greet(String name) {
 		if (name == null || name.isBlank()) {
-			throw new ValidationException("name", "must not be blank");
+			throw new ValidationException("Name must not be blank.");
 		}
 		return new Greeting("Hello, " + name.trim() + "!");
 	}

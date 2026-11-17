@@ -71,6 +71,7 @@ var manifest = []templateEntry{
 	// JSend envelope and error handling: always generated.
 	{source: "jsend/JSendResponse.java.tmpl", target: javaTarget(arch.RoleResponse, "JSendResponse.java", false)},
 	{source: "jsend/ValidationException.java.tmpl", target: javaTarget(arch.RoleException, "ValidationException.java", false)},
+	{source: "jsend/BusinessException.java.tmpl", target: javaTarget(arch.RoleException, "BusinessException.java", false)},
 	{source: "jsend/GlobalExceptionHandler.java.tmpl", target: javaTarget(arch.RoleHandler, "GlobalExceptionHandler.java", false)},
 
 	// Hello sample: optional, and the use case port only exists in clean.
