@@ -23,6 +23,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.SetVersionTemplate("{{.Version}}\n")
 
 	cmd.AddCommand(newVersionCmd())
+	cmd.AddCommand(newNewCmd())
 
 	return cmd
 }

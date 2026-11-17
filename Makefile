@@ -14,7 +14,7 @@ DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -X $(VER_PKG).Version=$(VERSION) -X $(VER_PKG).Commit=$(COMMIT) -X $(VER_PKG).Date=$(DATE)
 
-.PHONY: all verify fmt fmt-check vet test build clean
+.PHONY: all verify fmt fmt-check vet test golden build e2e clean
 
 all: verify
 
@@ -36,9 +36,17 @@ vet:
 test:
 	$(GO) test ./...
 
+# Rewrite testdata/golden from the current templates, then review the diff.
+golden:
+	$(GO) test ./internal/generator -run TestGolden -update
+
 build:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)
+
+# Generate a project, build it with Maven, start it, and probe /actuator/health.
+e2e: build
+	./scripts/e2e.sh
 
 clean:
 	rm -rf $(BIN_DIR)

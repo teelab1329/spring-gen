@@ -12,7 +12,7 @@ each file and where it is written. No network access, no Spring Initializr.
 ## 2. CLI surface
 
 ```
-spring-gen new <name> [flags]
+spring-gen new [name] [flags]
 spring-gen list [architectures|features]
 spring-gen version
 ```
@@ -21,16 +21,18 @@ spring-gen version
 
 | Flag | Meaning | Default |
 | --- | --- | --- |
-| `--group` | Maven groupId, e.g. `com.acme` | prompt |
-| `--artifact` | Maven artifactId / Go-style name | from `<name>` |
-| `--package` | base Java package | `{group}.{artifact}` sanitized |
-| `--architecture` | `layered` \| `clean` | prompt |
-| `--features` | comma list, e.g. `web,jpa,validation` | prompt (multi-select) |
-| `--java` | Java release version | `25` |
-| `--boot` | Spring Boot version | pinned constant |
+| `--group` | Maven groupId and Java package prefix, e.g. `com.acme` | prompt |
+| `--description` | project description | `<name> service` |
 | `--output` | parent directory for the new project | `.` |
 | `--no-interactive` | never prompt; error on missing required values | false |
 | `--force` | overwrite a non-empty target directory | false |
+
+Java `21` and Spring Boot `3.5.16` are fixed constants in
+`internal/generator/generator.go`. They are not flags.
+
+Not implemented yet (arrives with the registries in §3–§5): `--artifact`,
+`--package`, `--architecture`, `--features`. For now `<name>` doubles as the
+artifactId, and the package is `group + name` with dashes removed.
 
 `<name>` is the project directory name and, by default, the artifactId.
 
@@ -51,15 +53,21 @@ and fall back to `debug.ReadBuildInfo` (module version, `vcs.revision`,
 
 ### 2.1 Interaction rules
 
-- Prompt only for values not supplied by flags.
+- Prompt only for values not supplied by flags or arguments.
 - Prompts go to stderr; results and summaries go to stdout.
-- If stdin is not a TTY, or `--no-interactive` is set, treat every unanswered
-  required value as an error: `missing required flags: --group --architecture`.
+- An empty answer to a required question is re-asked (`  group is required`), and
+  an invalid answer is re-asked with the validation message. Nothing is written
+  until every value is valid.
+- Flag values are validated but never re-prompted: `--group acme` fails fast.
+- End of input (Ctrl-D, empty pipe) aborts with
+  `aborted: no input for <field>`; no project directory is created.
+- If stdin is not a TTY, or `--no-interactive` is set, list every missing value
+  in one error: `missing required values: <name> argument, --group`.
 - Fully-flagged runs must be usable from CI, so keep prompt output out of stdout.
 
-Prompt implementation: plain `bufio.Reader` line prompts in `internal/prompt`.
-No TUI dependency until the plain version is proven insufficient. **DECIDE** if
-multi-select features should use `charmbracelet/huh` from the start.
+Prompt implementation: plain `bufio` line prompts in `internal/prompt`. Prompts
+write to stderr, so a fully flagged run stays machine-readable. No TUI
+dependency; feature selection will start as a comma-separated answer.
 
 ## 3. Inputs and validation
 
@@ -73,7 +81,7 @@ Validate everything before touching the filesystem.
 | `package` | derived: group + artifact with `-` removed; reject Java keywords as any segment |
 | `architecture` | must exist in registry |
 | `features` | must exist in registry; dependencies satisfied; no conflicts |
-| `java` | >= 21 |
+| `java` | fixed at 21 (`JavaVersion`), not user-selectable |
 | target dir | must not exist, or be empty, or `--force` |
 
 Conflict/dependency model in `internal/generator/feature/registry.go`:
@@ -144,7 +152,8 @@ internal/assets/
   embed.go                    // //go:embed all:templates
   templates/
     base/                     pom.xml.tmpl, application.yml.tmpl, Main.java.tmpl,
-                              README.md.tmpl, .gitignore, .mvn/…, mvnw, mvnw.cmd, .gitattributes
+                              ApplicationTests.java.tmpl, gitignore.tmpl, mvnw, mvnw.cmd,
+                              mvn/wrapper/maven-wrapper.properties
     web/                      Controller.java.tmpl
     jpa/                      Entity.java.tmpl, RepositoryPort.java.tmpl,
                               RepositoryAdapter.java.tmpl, V1__init.sql, config fragment
@@ -152,6 +161,10 @@ internal/assets/
     layered/                  optional architecture-specific overrides (see §5.2)
     clean/
 ```
+
+`gitignore.tmpl` is written as `.gitignore` and `mvn/wrapper/…` as
+`.mvn/wrapper/…`: storing the real names would make git ignore the wrapper jar
+and apply the generated project's ignore rules to this repo.
 
 Template data:
 
@@ -178,11 +191,10 @@ if not, skip this special case.
 
 ### 5.1 Merged files
 
-- `pom.xml.tmpl`: one template; dependencies and properties come from the
-  feature registry. Sorted, deduplicated.
-- `application.yml`: base template plus each feature's `Config` fragment, deep
-  merged with `gopkg.in/yaml.v3` (maps merge, scalars override in feature order,
-  lists union without duplicates). Fragments are data files, not Go strings.
+Stage 1 renders `pom.xml` from a single template with fixed dependencies
+(web, actuator, test). Once the feature registry lands, the same template is
+fed dependencies and properties from it, sorted and deduplicated; features must
+never contribute raw XML text.
 
 ### 5.2 Architecture overrides
 
@@ -209,34 +221,40 @@ so it can be tested without the filesystem.
 
 ## 7. Testing
 
-- Unit: validation rules, each architecture's `Path`/`Package`, YAML merge,
-  feature dependency resolution.
-- Golden: `testdata/golden/<arch>-<feature-hash>/` trees, compared with
-  `-update` to regenerate. Sorted traversal, no absolute paths in output.
-- Smoke: generate a project into `t.TempDir()`; assert pom contains contributed
-  deps and that no staging dir remains.
-- Build check (manual or CI, not `go test`): `./mvnw -q verify` inside a
-  generated project. Real Maven runs are too slow to gate every test.
+- Unit: validation rules, package/class derivation, generated file set, `mvnw`
+  mode, existing-target and `--force` behavior.
+- Golden: `internal/generator/testdata/golden/basic/`, regenerated with
+  `make golden` (a `-update` flag scoped to the generator package). Sorted
+  traversal, no absolute paths in output.
+- Smoke: generate a project into `t.TempDir()`; assert the pom pins Boot and
+  Java and that no staging directory remains.
+- `make e2e` (not part of `go test`): generate, `./mvnw verify`, start the jar,
+  require `/actuator/health` → `UP`.
 
 ## 8. Package layout
 
 ```
 cmd/spring-gen/main.go          // thin: cli.Execute()
-internal/cli/                   // root.go, new.go, list.go, version.go
-internal/generator/             // pipeline, plan, render
-internal/generator/arch/        // layered.go, clean.go, registry
-internal/generator/feature/     // registry + YAML fragments
-internal/assets/                // embed.go + templates/
+internal/cli/                   // root.go, new.go, version.go (+ tests)
+internal/generator/             // input/derivation, validation, render, atomic write
+internal/generator/testdata/    // golden trees
+internal/generator/arch/        // planned: layered.go, clean.go, registry
+internal/generator/feature/     // planned: feature registry + YAML fragments
+internal/assets/                // embed.go + templates/base (feature dirs planned)
 internal/prompt/                // line prompts
-testdata/golden/
+scripts/e2e.sh                  // end-to-end check behind `make e2e`
 ```
 
-## 9. Open questions
+## 9. Resolved and open questions
 
+Resolved:
+
+- Java is fixed at 21 and Spring Boot at 3.5.16 (`internal/generator/generator.go`).
+- Prompts use plain `bufio` line input in `internal/prompt`; no TUI dependency.
+- `new` does not run `git init` in the generated project.
+
+Open:
+
+- **DECIDE** whether generated projects include a CI workflow (see §5). This
+  decides whether templates need `[[ ]]` delimiters.
 - Default branch is `main` (matches `origin/main`); never commit to it directly, see `AGENTS.md`.
-- **DECIDE** initial Spring Boot version constant; verify the chosen version's
-  Maven artifacts exist before pinning.
-- **DECIDE** whether generated projects include a CI workflow (see §5).
-- **DECIDE** multi-select prompt library (see §2.1).
-- **DECIDE** whether `spring-gen new` also runs `git init` in the output
-  (default: no).
