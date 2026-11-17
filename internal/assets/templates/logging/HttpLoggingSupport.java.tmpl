@@ -1,5 +1,6 @@
 package {{ .Package "logging" }};
 
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -48,15 +49,21 @@ final class HttpLoggingSupport {
 	}
 
 	static String body(HttpLoggingProperties properties, byte[] content, String contentType, long totalBytes) {
-		return body(properties, content, parseMediaType(contentType), totalBytes);
+		return body(properties, content, parseMediaType(contentType), totalBytes, false);
+	}
+
+	static String body(HttpLoggingProperties properties, byte[] content, MediaType mediaType, long totalBytes) {
+		return body(properties, content, mediaType, totalBytes, false);
 	}
 
 	/**
 	 * Renders a body. {@code totalBytes} is the real size when known, or a
-	 * negative value when the content was capped before rendering.
+	 * negative value when the content was capped before rendering;
+	 * {@code truncatedHint} marks a body the caller already truncated.
 	 */
-	static String body(HttpLoggingProperties properties, byte[] content, MediaType mediaType, long totalBytes) {
-		if (content.length == 0) {
+	static String body(HttpLoggingProperties properties, byte[] content, MediaType mediaType, long totalBytes,
+			boolean truncatedHint) {
+		if (content.length == 0 && !truncatedHint) {
 			return "";
 		}
 		if (mediaType == null || !isTextual(mediaType)) {
@@ -64,7 +71,7 @@ final class HttpLoggingSupport {
 		}
 
 		int limit = (int) Math.min(properties.maxBodySize().toBytes(), Integer.MAX_VALUE);
-		boolean truncated = content.length > limit || totalBytes > limit;
+		boolean truncated = truncatedHint || content.length > limit || totalBytes > limit;
 		byte[] visible = truncated ? Arrays.copyOf(content, Math.min(content.length, limit)) : content;
 		Charset charset = mediaType.getCharset() == null ? StandardCharsets.UTF_8 : mediaType.getCharset();
 
