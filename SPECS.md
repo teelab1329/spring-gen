@@ -562,3 +562,26 @@ Open:
 - **DECIDE** whether generated projects include a CI workflow (see §5). This
   decides whether templates need `[[ ]]` delimiters.
 - Default branch is `main` (matches `origin/main`); never commit to it directly, see `AGENTS.md`.
+
+## 10. Release
+
+Releases are cut from `main` by pushing a `v*` tag; `.github/workflows/release.yml`
+runs `make verify`, `make e2e` on JDK 21, then GoReleaser.
+
+- Archives are `spring-gen_<os>_<arch>.tar.gz` (Windows: `.zip`) for linux and
+  darwin, amd64 and arm64, plus `checksums.txt` (SHA-256).
+- The asset name deliberately has **no version**, so
+  `.../releases/latest/download/<asset>` resolves without the GitHub API. Do not
+  add `{{ .Version }}` to `name_template`.
+- `scripts/install.sh` (Linux/macOS/Git Bash) and `scripts/install.ps1`
+  (Windows) verify the checksum, install without admin rights
+  (`~/.local/bin`, `%LOCALAPPDATA%\Programs\spring-gen`), and print the
+  installed version. `SPRING_GEN_BASE_URL` points them at a mirror or a local
+  `dist/` for testing.
+- `make snapshot` builds every archive locally with the pinned GoReleaser
+  (`GOTOOLCHAIN=auto` downloads a newer toolchain when needed).
+- `install-test.yml` installs from the published release on Ubuntu, macOS and
+  Windows and generates a project.
+- The repository must be public for anonymous installs; release builds and
+  install tests fail on a private repository without auth.
+- Never move or delete a published tag; cut a new patch release instead.

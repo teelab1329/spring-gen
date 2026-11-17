@@ -44,6 +44,11 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - `X-Request-Signature = Base64(HMAC-SHA256(secret, requestId + timestamp + Base64(rawBody)))`. Rejections log `[SECURITY-ERROR]` and return JSend `fail`. Adding a tag means updating `LogType` and this rule.
 - Outgoing clients that call a signed service set `sign-requests: true`; the interceptor signs every call.
 
+## Release
+- Tags are cut from `main` only after the release PR is merged, and only with the user's explicit go-ahead. Never force-push, move, or delete a published tag.
+- Release archives intentionally omit the version from the file name (`spring-gen_<os>_<arch>`); the install scripts rely on `releases/latest/download`. Do not add a version to `name_template`.
+- `make snapshot` builds all archives locally; test `scripts/install.sh` against `dist/` with `SPRING_GEN_BASE_URL` before tagging.
+
 ## Cobra
 - Use the vendored skill `.agents/skills/golang-spf13-cobra` (pinned in `skills-lock.json`).
 - `RunE` only, and write to `cmd.OutOrStdout()` / `cmd.ErrOrStderr()` so tests capture output.
