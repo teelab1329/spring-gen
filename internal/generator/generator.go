@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/teelab1329/spring-gen/internal/generator/arch"
 )
 
 // Versions are fixed by design: every generated project targets Java 21 and
@@ -18,24 +20,44 @@ const (
 
 // Input is what the user asked for, before validation and derivation.
 type Input struct {
-	Name        string
-	Group       string
-	Description string
-	Output      string
-	Force       bool
+	Name           string
+	Group          string
+	Description    string
+	Architecture   string // "layered" or "clean"
+	VirtualThreads bool
+	Sample         bool // include the Hello sample endpoint
+	Output         string
+	Force          bool
 }
 
 // Data is the resolved template data.
 type Data struct {
-	Name        string // artifactId and spring.application.name, e.g. order-service
-	Group       string // Maven groupId, e.g. com.acme
-	Artifact    string // Maven artifactId, same as Name
-	Description string
-	Package     string // Java package, e.g. com.acme.orderservice
-	BaseDir     string // package as a path, e.g. com/acme/orderservice
-	ClassName   string // main class, e.g. OrderServiceApplication
-	Java        string
-	Boot        string
+	Name           string // artifactId and spring.application.name, e.g. order-service
+	Group          string // Maven groupId, e.g. com.acme
+	Artifact       string // Maven artifactId, same as Name
+	Description    string
+	BasePackage    string // Java package, e.g. com.acme.orderservice
+	BaseDir        string // package as a path, e.g. com/acme/orderservice
+	ClassName      string // main class, e.g. OrderServiceApplication
+	Architecture   string // architecture ID, e.g. layered
+	VirtualThreads bool
+	Sample         bool
+	Java           string
+	Boot           string
+}
+
+// Package resolves the full Java package for a role in this project's
+// architecture. Templates call it as `{{ .Package "service" }}`.
+func (d Data) Package(role string) (string, error) {
+	architecture, err := arch.Get(d.Architecture)
+	if err != nil {
+		return "", err
+	}
+	suffix, err := architecture.Package(arch.Role(role))
+	if err != nil {
+		return "", err
+	}
+	return d.BasePackage + "." + suffix, nil
 }
 
 // Result describes a successful generation.
@@ -65,16 +87,23 @@ func NewData(in Input) (Data, error) {
 		return Data{}, err
 	}
 
+	if _, err := arch.Get(in.Architecture); err != nil {
+		return Data{}, err
+	}
+
 	return Data{
-		Name:        in.Name,
-		Group:       group,
-		Artifact:    in.Name,
-		Description: description,
-		Package:     pkg,
-		BaseDir:     strings.ReplaceAll(pkg, ".", "/"),
-		ClassName:   Pascal(in.Name) + "Application",
-		Java:        JavaVersion,
-		Boot:        BootVersion,
+		Name:           in.Name,
+		Group:          group,
+		Artifact:       in.Name,
+		Description:    description,
+		BasePackage:    pkg,
+		BaseDir:        strings.ReplaceAll(pkg, ".", "/"),
+		ClassName:      Pascal(in.Name) + "Application",
+		Architecture:   in.Architecture,
+		VirtualThreads: in.VirtualThreads,
+		Sample:         in.Sample,
+		Java:           JavaVersion,
+		Boot:           BootVersion,
 	}, nil
 }
 

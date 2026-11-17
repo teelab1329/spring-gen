@@ -1,0 +1,21 @@
+package {{ .Package "service" }};
+
+import org.springframework.stereotype.Service;
+
+import {{ .Package "exception" }}.ValidationException;
+import {{ .Package "model" }}.Greeting;
+{{- if eq .Architecture "clean" }}
+import {{ .Package "usecase" }}.HelloUseCase;
+{{- end }}
+
+@Service
+public class HelloService{{ if eq .Architecture "clean" }} implements HelloUseCase{{ end }} {
+
+	public Greeting greet(String name) {
+		if (name == null || name.isBlank()) {
+			throw new ValidationException("name", "must not be blank");
+		}
+		return new Greeting("Hello, " + name.trim() + "!");
+	}
+
+}

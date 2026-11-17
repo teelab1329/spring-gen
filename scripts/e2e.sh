@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# End-to-end check: generate a project, build it with Maven, start it, and
-# probe the actuator health endpoint. Requires JDK 25 and network access on the
-# first run (Maven downloads the wrapper distribution and dependencies).
+# End-to-end check: generate a project per architecture, build it with Maven,
+# start it, and exercise the JSend sample endpoint. Requires JDK 25 and network
+# access on the first run (Maven downloads the wrapper distribution and deps).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin="$root/bin/spring-gen"
-port="${E2E_PORT:-18080}"
 work="$(mktemp -d)"
 pid=""
 
@@ -24,41 +23,89 @@ if [[ ! -x "$bin" ]]; then
 	exit 1
 fi
 
-echo "e2e: generating project in $work"
-"$bin" new e2e-demo \
-	--group com.example \
-	--description "E2E demo" \
-	--output "$work" \
-	--no-interactive
-
-project="$work/e2e-demo"
-
-echo "e2e: building and testing the generated project"
-(cd "$project" && ./mvnw -q -B verify)
-
-jar="$(find "$project/target" -maxdepth 1 -name '*.jar' | head -n 1)"
-if [[ -z "$jar" ]]; then
-	echo "e2e: no jar produced in $project/target" >&2
-	exit 1
-fi
-
-echo "e2e: starting $(basename "$jar") on port $port"
-java -jar "$jar" --server.port="$port" >"$work/app.log" 2>&1 &
-pid=$!
-
-for _ in $(seq 1 90); do
-	if curl -fsS "http://127.0.0.1:$port/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
-		echo "e2e: passed — health endpoint reports UP"
-		exit 0
+stop_app() {
+	if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+		kill "$pid" 2>/dev/null || true
+		wait "$pid" 2>/dev/null || true
 	fi
-	if ! kill -0 "$pid" 2>/dev/null; then
-		echo "e2e: application exited before becoming healthy" >&2
-		cat "$work/app.log" >&2
-		exit 1
-	fi
-	sleep 1
-done
+	pid=""
+}
 
-echo "e2e: timed out waiting for the health endpoint" >&2
-cat "$work/app.log" >&2
-exit 1
+start_app() {
+	local jar="$1" port="$2"
+	java -jar "$jar" --server.port="$port" >"$work/app-$port.log" 2>&1 &
+	pid=$!
+
+	for _ in $(seq 1 90); do
+		if curl -fsS "http://127.0.0.1:$port/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
+			return 0
+		fi
+		if ! kill -0 "$pid" 2>/dev/null; then
+			echo "e2e: application exited before becoming healthy" >&2
+			cat "$work/app-$port.log" >&2
+			return 1
+		fi
+		sleep 1
+	done
+
+	echo "e2e: timed out waiting for the health endpoint" >&2
+	cat "$work/app-$port.log" >&2
+	return 1
+}
+
+# check_response <label> <url> <expected status> <expected body fragment>
+check_response() {
+	local label="$1" url="$2" want_status="$3" want_body="$4"
+	local response status body
+
+	response="$(curl -s -w '\n%{http_code}' "$url")"
+	status="${response##*$'\n'}"
+	body="${response%$'\n'*}"
+
+	if [[ "$status" != "$want_status" ]]; then
+		echo "e2e: $label: status $status, want $want_status (body: $body)" >&2
+		return 1
+	fi
+	if [[ "$body" != *"$want_body"* ]]; then
+		echo "e2e: $label: body '$body' does not contain '$want_body'" >&2
+		return 1
+	fi
+	echo "e2e: $label ok"
+}
+
+run_case() {
+	local architecture="$1" port="$2"
+	local project="$work/order-service-$architecture"
+
+	echo "e2e: [$architecture] generating project"
+	"$bin" new "order-service-$architecture" \
+		--group com.example \
+		--architecture "$architecture" \
+		--output "$work" \
+		--no-interactive
+
+	echo "e2e: [$architecture] building and testing"
+	(cd "$project" && ./mvnw -q -B verify)
+
+	local jar
+	jar="$(find "$project/target" -maxdepth 1 -name '*.jar' | head -n 1)"
+	if [[ -z "$jar" ]]; then
+		echo "e2e: [$architecture] no jar produced in $project/target" >&2
+		return 1
+	fi
+
+	echo "e2e: [$architecture] starting $(basename "$jar") on port $port"
+	start_app "$jar" "$port"
+
+	check_response "[$architecture] health" "http://127.0.0.1:$port/actuator/health" 200 '"status":"UP"'
+	check_response "[$architecture] hello success" "http://127.0.0.1:$port/api/hello?name=Tee" 200 '"message":"Hello, Tee!"'
+	check_response "[$architecture] validation fail" "http://127.0.0.1:$port/api/hello?name=%20" 400 '"status":"fail"'
+	check_response "[$architecture] unknown path" "http://127.0.0.1:$port/api/nope" 404 '"status":"fail"'
+
+	stop_app
+}
+
+run_case layered 18080
+run_case clean 18081
+
+echo "e2e: passed"

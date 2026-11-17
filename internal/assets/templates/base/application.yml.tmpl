@@ -1,6 +1,11 @@
 spring:
   application:
     name: {{ .Artifact }}
+{{- if .VirtualThreads }}
+  threads:
+    virtual:
+      enabled: true
+{{- end }}
 
 management:
   endpoints:

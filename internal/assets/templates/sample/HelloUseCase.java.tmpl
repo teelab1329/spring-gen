@@ -1,0 +1,9 @@
+package {{ .Package "usecase" }};
+
+import {{ .Package "model" }}.Greeting;
+
+public interface HelloUseCase {
+
+	Greeting greet(String name);
+
+}

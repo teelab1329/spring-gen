@@ -1,0 +1,45 @@
+package com.acme.orderservice.common.exception;
+
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import com.acme.orderservice.common.exception.ValidationException;
+import com.acme.orderservice.common.response.JSendResponse;
+
+/**
+ * Maps errors onto JSend {@code fail} and {@code error} responses.
+ */
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+	@ExceptionHandler(ValidationException.class)
+	public ResponseEntity<JSendResponse<Map<String, String>>> handleValidation(ValidationException exception) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+			.body(JSendResponse.fail(Map.of(exception.getField(), exception.getMessage())));
+	}
+
+	@ExceptionHandler({ MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class })
+	public ResponseEntity<JSendResponse<Map<String, String>>> handleBadRequest(Exception exception) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+			.body(JSendResponse.fail(Map.of("request", "invalid request parameters")));
+	}
+
+	@ExceptionHandler(NoResourceFoundException.class)
+	public ResponseEntity<JSendResponse<Map<String, String>>> handleNotFound(NoResourceFoundException exception) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(JSendResponse.fail(Map.of()));
+	}
+
+	@ExceptionHandler(Exception.class)
+	public ResponseEntity<JSendResponse<Void>> handleUnexpected(Exception exception) {
+		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+			.body(JSendResponse.error("Internal server error"));
+	}
+
+}

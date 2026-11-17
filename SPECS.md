@@ -23,6 +23,9 @@ spring-gen version
 | --- | --- | --- |
 | `--group` | Maven groupId and Java package prefix, e.g. `com.acme` | prompt |
 | `--description` | project description | `<name> service` |
+| `--architecture` | `layered` or `clean` (completion provided) | prompt |
+| `--virtual-threads` | enable virtual threads; disable with `--virtual-threads=false` | true / prompt |
+| `--sample` | include the Hello sample endpoint; disable with `--sample=false` | true / prompt |
 | `--output` | parent directory for the new project | `.` |
 | `--no-interactive` | never prompt; error on missing required values | false |
 | `--force` | overwrite a non-empty target directory | false |
@@ -30,9 +33,12 @@ spring-gen version
 Java `21` and Spring Boot `3.5.16` are fixed constants in
 `internal/generator/generator.go`. They are not flags.
 
-Not implemented yet (arrives with the registries in §3–§5): `--artifact`,
-`--package`, `--architecture`, `--features`. For now `<name>` doubles as the
-artifactId, and the package is `group + name` with dashes removed.
+Not implemented yet (arrives with the feature registry in §3): `--artifact`,
+`--package`, `--features`. For now `<name>` doubles as the artifactId, and the
+package is `group + name` with dashes removed.
+
+Boolean flags only prompt when they were not passed at all. `--virtual-threads
+false` does not work for pflag bools; write `--virtual-threads=false`.
 
 `<name>` is the project directory name and, by default, the artifactId.
 
@@ -55,14 +61,17 @@ and fall back to `debug.ReadBuildInfo` (module version, `vcs.revision`,
 
 - Prompt only for values not supplied by flags or arguments.
 - Prompts go to stderr; results and summaries go to stdout.
+- Prompt order: name, group, description, architecture (numbered list; a
+  number or the name is accepted), virtual threads, sample endpoint.
 - An empty answer to a required question is re-asked (`  group is required`), and
   an invalid answer is re-asked with the validation message. Nothing is written
   until every value is valid.
-- Flag values are validated but never re-prompted: `--group acme` fails fast.
+- Flag values are validated but never re-prompted: `--group acme` fails fast,
+  and `--architecture` or `--virtual-threads=false` skip their prompts.
 - End of input (Ctrl-D, empty pipe) aborts with
   `aborted: no input for <field>`; no project directory is created.
 - If stdin is not a TTY, or `--no-interactive` is set, list every missing value
-  in one error: `missing required values: <name> argument, --group`.
+  in one error: `missing required values: <name> argument, --group, --architecture`.
 - Fully-flagged runs must be usable from CI, so keep prompt output out of stdout.
 
 Prompt implementation: plain `bufio` line prompts in `internal/prompt`. Prompts
@@ -103,47 +112,58 @@ as structured data, **not** as XML text fragments — merging raw XML is fragile
 
 ## 4. Architecture mapping
 
-Each template declares a logical role. The architecture resolves role → path.
-
-```go
-type Architecture interface {
-    ID() string
-    Path(role Role, base string) (string, error) // returns path relative to project root
-    Package(role Role, base string) string       // Java package for the role
-}
-```
+Each template declares a logical role. `internal/generator/arch` owns the role →
+package mapping; templates ask for a package with `{{ .Package "service" }}` and
+never hardcode one.
 
 Layered (`layered`):
 
-| Role | Path |
+| Role | Package suffix |
 | --- | --- |
-| `entity` | `src/main/java/<base>/entity/<Name>.java` |
-| `repository` | `src/main/java/<base>/repository/` |
-| `service` | `src/main/java/<base>/service/` |
-| `controller` | `src/main/java/<base>/controller/` |
-| `dto` | `src/main/java/<base>/dto/` |
-| `config` | `src/main/java/<base>/config/` |
+| `response` | `common.response` |
+| `exception` | `common.exception` |
+| `handler` | `common.exception` |
+| `model` | `model` |
+| `service` | `service` |
+| `dto` | `dto` |
+| `controller` | `controller` |
 
 Clean (`clean`):
 
-| Role | Path |
+| Role | Package suffix |
 | --- | --- |
-| `entity` | `src/main/java/<base>/domain/model/` |
-| `repository` (port) | `src/main/java/<base>/domain/port/` |
-| `usecase` | `src/main/java/<base>/application/usecase/` |
-| `repository` (adapter) | `src/main/java/<base>/infrastructure/persistence/` |
-| `controller` | `src/main/java/<base>/infrastructure/web/` |
-| `dto` | `src/main/java/<base>/application/dto/` |
-| `config` | `src/main/java/<base>/infrastructure/config/` |
+| `response` | `infrastructure.web.response` |
+| `exception` | `domain.exception` |
+| `handler` | `infrastructure.web` |
+| `model` | `domain.model` |
+| `usecase` | `application.port.in` |
+| `service` | `application.service` |
+| `dto` | `infrastructure.web.dto` |
+| `controller` | `infrastructure.web` |
 
-Roles that exist twice in one architecture (clean's port vs adapter) get
-suffixed template names (`RepositoryPort.java.tmpl`, `RepositoryAdapter.java.tmpl`)
-mapped to the same role with distinct keys. Templates may include an
-architecture conditional section for imports, but the file must remain a single
-template per role per architecture-neutral feature.
+Asking an architecture for a role it does not define is an error (layered has no
+`usecase`), so a template cannot silently land in the wrong package. Files land
+under `src/main/java/<base path>/<suffix>/`, tests under `src/test/java/…`.
 
-Anything placed outside `src/main/java` (pom, wrapper, yml, migrations) is
-architecture-independent: role `root`, empty package.
+Templates contain an `{{ if eq .Architecture "clean" }}` section only where the
+code genuinely differs (e.g. the controller injects `HelloUseCase` instead of
+`HelloService`). Anything placed outside the Java tree (pom, wrapper, yml) is
+architecture-independent.
+
+## 4.1 JSend responses
+
+JSend classes are always generated; the Hello sample is optional (`--sample`).
+
+- `GET /api/hello?name=Tee` → `200 {"status":"success","data":{"message":"Hello, Tee!"}}`
+- blank `name` → `ValidationException` → `400 {"status":"fail","data":{"name":"must not be blank"}}`
+- missing/invalid parameter → `400` fail; unknown path → `404` fail
+- unexpected exception → `500 {"status":"error","message":"Internal server error"}`
+
+Controllers return `ResponseEntity<JSendResponse<…>>` explicitly. A global
+`ResponseBodyAdvice` wrapper was rejected because it would also wrap
+`/actuator/health` and plain-string responses. `ValidationException` belongs to
+the always-generated JSend code, not to the sample, so projects without the
+sample still compile.
 
 ## 5. Template layout
 
@@ -154,12 +174,10 @@ internal/assets/
     base/                     pom.xml.tmpl, application.yml.tmpl, Main.java.tmpl,
                               ApplicationTests.java.tmpl, gitignore.tmpl, mvnw, mvnw.cmd,
                               mvn/wrapper/maven-wrapper.properties
-    web/                      Controller.java.tmpl
-    jpa/                      Entity.java.tmpl, RepositoryPort.java.tmpl,
-                              RepositoryAdapter.java.tmpl, V1__init.sql, config fragment
-    validation/ security/ actuator/ lombok/ mapstruct/ testcontainers/
-    layered/                  optional architecture-specific overrides (see §5.2)
-    clean/
+    jsend/                    JSendResponse, ValidationException, GlobalExceptionHandler
+    sample/                   Greeting, HelloUseCase (clean only), HelloService,
+                              HelloResponse, HelloController, HelloControllerTest
+    web/ jpa/ validation/ …   planned feature directories
 ```
 
 `gitignore.tmpl` is written as `.gitignore` and `mvn/wrapper/…` as
@@ -170,24 +188,30 @@ Template data:
 
 ```go
 type Data struct {
-    Name, Group, Artifact, Package, BaseDir string
-    Arch        string
-    Features    []string          // sorted, for conditionals
-    Java, Boot  string
-    Deps        []Dependency
-    Props       map[string]string
-    Has         func(string) bool // feature predicate for templates
+    Name, Group, Artifact, Description string
+    BasePackage, BaseDir, ClassName    string
+    Architecture   string // "layered" | "clean"
+    VirtualThreads bool
+    Sample         bool
+    Java, Boot     string
 }
+
+func (d Data) Package(role string) (string, error) // role → full Java package
 ```
 
-`FuncMap` provides `has`, `pkg` (package for a role), `camel`, `pascal`,
-`kebab`, `snake`, `lower`. Unknown template functions must fail the render, not
-emit `<no value>`; render with `Option("missingkey=error")`.
+`FuncMap` provides `xml`, `lower`, `pascal`; role packages come from the
+`.Package` method, which returns an error for roles the architecture does not
+define. Rendering uses `Option("missingkey=error")`, so a typo fails the run
+instead of emitting `<no value>`.
 
 Delimiters stay `{{ }}` for Java/YAML/XML. Files that would conflict (GitHub
-Actions `${{ }}`, e.g. CI workflow templates) are rendered with
-`Delims("[[", "]]")`. **DECIDE** whether to ship CI workflow templates at all —
-if not, skip this special case.
+Actions `${{ }}`, e.g. CI workflow templates) would need `Delims("[[", "]]")`.
+**DECIDE** whether to ship CI workflow templates at all — if not, skip this
+special case.
+
+`application.yml` is a single template with an `{{ if .VirtualThreads }}` block
+for `spring.threads.virtual.enabled`. Feature-registry fragments are not
+implemented yet.
 
 ### 5.1 Merged files
 
@@ -216,20 +240,23 @@ add `templates/<arch>/...` when the same role must diverge; the resolver checks
 5. **Commit**: rename staging → final path; `--force` removes the target first.
    Clean up staging on any error (defer).
 
-Rendering is a pure function `Render(Data, []PlannedFile) (map[string][]byte, error)`
-so it can be tested without the filesystem.
+Rendering is a pure function `Render(Data) ([]File, error)` so it can be tested
+without the filesystem; each manifest entry carries its role, destination, and
+an optional `when(Data)` condition.
 
 ## 7. Testing
 
-- Unit: validation rules, package/class derivation, generated file set, `mvnw`
-  mode, existing-target and `--force` behavior.
-- Golden: `internal/generator/testdata/golden/basic/`, regenerated with
-  `make golden` (a `-update` flag scoped to the generator package). Sorted
-  traversal, no absolute paths in output.
+- Unit: validation rules, package/class derivation, role → package mapping for
+  both architectures, generated file set, `mvnw` mode, existing-target and
+  `--force` behavior, sample on/off, virtual threads on/off.
+- Golden: `internal/generator/testdata/golden/{layered-full,clean-full,layered-minimal}/`,
+  regenerated with `make golden` (a `-update` flag scoped to the generator
+  package). Sorted traversal, no absolute paths in output.
 - Smoke: generate a project into `t.TempDir()`; assert the pom pins Boot and
   Java and that no staging directory remains.
-- `make e2e` (not part of `go test`): generate, `./mvnw verify`, start the jar,
-  require `/actuator/health` → `UP`.
+- `make e2e` (not part of `go test`): for each architecture, generate,
+  `./mvnw verify`, start the jar, and check health, JSend success, 400 fail,
+  404 fail.
 
 ## 8. Package layout
 
@@ -238,9 +265,9 @@ cmd/spring-gen/main.go          // thin: cli.Execute()
 internal/cli/                   // root.go, new.go, version.go (+ tests)
 internal/generator/             // input/derivation, validation, render, atomic write
 internal/generator/testdata/    // golden trees
-internal/generator/arch/        // planned: layered.go, clean.go, registry
+internal/generator/arch/        // role → package mapping for layered and clean
 internal/generator/feature/     // planned: feature registry + YAML fragments
-internal/assets/                // embed.go + templates/base (feature dirs planned)
+internal/assets/                // embed.go + templates/{base,jsend,sample}
 internal/prompt/                // line prompts
 scripts/e2e.sh                  // end-to-end check behind `make e2e`
 ```
@@ -252,6 +279,8 @@ Resolved:
 - Java is fixed at 21 and Spring Boot at 3.5.16 (`internal/generator/generator.go`).
 - Prompts use plain `bufio` line input in `internal/prompt`; no TUI dependency.
 - `new` does not run `git init` in the generated project.
+- Architectures are `layered` and `clean`, resolved by `internal/generator/arch`.
+- Virtual threads default to on; the sample endpoint defaults to on.
 
 Open:
 
