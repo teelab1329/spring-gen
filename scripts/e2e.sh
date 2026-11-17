@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # End-to-end check: generate a project per architecture, build it with Maven,
-# start it, and exercise the JSend sample endpoint. Requires JDK 25 and network
-# access on the first run (Maven downloads the wrapper distribution and deps).
+# start it, and exercise signing, JSend, logging, masking, and the pooled REST
+# client. Requires JDK 25, openssl, and network access on the first run.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin="$root/bin/spring-gen"
 work="$(mktemp -d)"
 pid=""
+signing_secret="e2e-shared-secret"
 
 cleanup() {
 	if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -33,7 +34,8 @@ stop_app() {
 
 start_app() {
 	local jar="$1" port="$2"
-	java -jar "$jar" --server.port="$port" >"$work/app-$port.log" 2>&1 &
+	REQUEST_SIGNING_SECRET="$signing_secret" java -jar "$jar" --server.port="$port" \
+		>"$work/app-$port.log" 2>&1 &
 	pid=$!
 
 	for _ in $(seq 1 90); do
@@ -53,13 +55,60 @@ start_app() {
 	return 1
 }
 
+# sign <requestId> <timestamp> <body>
+sign() {
+	local request_id="$1" timestamp="$2" body="${3:-}"
+	printf '%s' "${request_id}${timestamp}$(printf '%s' "$body" | base64 -w0)" \
+		| openssl dgst -sha256 -hmac "$signing_secret" -binary | base64 -w0
+}
+
+# signed_response <url> [signed-body] [timestamp-offset-ms] [sent-body] [method]
+signed_response() {
+	local url="$1" body="${2:-}" offset="${3:-0}" method="${5:-GET}"
+	local sent="${4:-$body}"
+	local request_id timestamp signature
+	request_id="$(cat /proc/sys/kernel/random/uuid)"
+	timestamp="$(( $(date +%s%3N) + offset ))"
+	signature="$(sign "$request_id" "$timestamp" "$body")"
+
+	if [[ -n "$sent" ]]; then
+		curl -s -w '\n%{http_code}' -X "$method" \
+			-H "X-Request-Id: $request_id" -H "X-Request-Timestamp: $timestamp" \
+			-H "X-Request-Signature: $signature" -H 'Content-Type: application/json' \
+			-d "$sent" "$url"
+	else
+		curl -s -w '\n%{http_code}' -X "$method" \
+			-H "X-Request-Id: $request_id" -H "X-Request-Timestamp: $timestamp" \
+			-H "X-Request-Signature: $signature" "$url"
+	fi
+}
+
 # check_response <label> <url> <expected status> <expected body fragment> [forbidden fragment]
-check_response() {	local label="$1" url="$2" want_status="$3" want_body="$4" forbidden="${5:-}"
+check_response() {
+	local label="$1" url="$2" want_status="$3" want_body="$4" forbidden="${5:-}"
 	local response status body
 
 	response="$(curl -s -w '\n%{http_code}' "$url")"
 	status="${response##*$'\n'}"
 	body="${response%$'\n'*}"
+
+	assert_response "$label" "$status" "$body" "$want_status" "$want_body" "$forbidden"
+}
+
+# check_signed <label> <url> <expected status> <expected body fragment>
+check_signed() {
+	local label="$1" url="$2" want_status="$3" want_body="$4"
+	local response status body
+
+	response="$(signed_response "$url")"
+	status="${response##*$'\n'}"
+	body="${response%$'\n'*}"
+
+	assert_response "$label" "$status" "$body" "$want_status" "$want_body" ""
+}
+
+assert_response() {
+	local label="$1" status="$2" body="$3" want_status="$4" want_body="$5" forbidden="${6:-}"
 
 	if [[ "$status" != "$want_status" ]]; then
 		echo "e2e: $label: status $status, want $want_status (body: $body)" >&2
@@ -121,33 +170,61 @@ run_case() {
 	echo "e2e: [$architecture] starting $(basename "$jar") on port $port"
 	start_app "$jar" "$port"
 
+	# Health stays unsigned.
 	check_response "[$architecture] health" "http://127.0.0.1:$port/actuator/health" 200 '"status":"UP"'
-	check_response "[$architecture] hello success" "http://127.0.0.1:$port/api/hello?name=Tee" 200 '"message":"Hello, Tee!"'
-	check_response "[$architecture] validation fail" "http://127.0.0.1:$port/api/hello?name=%20" 400 '"message":"Name must not be blank."' '"data"'
-	check_response "[$architecture] unknown path" "http://127.0.0.1:$port/api/nope" 404 '"message":"Resource not found: /api/nope"' '"data"'
 
-	# A request with a known traceparent, a secret query value and a token header.
-	curl -s -o /dev/null \
-		-H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
-		-H 'Authorization: Bearer topsecret' \
-		"http://127.0.0.1:$port/api/hello?name=Tee&password=hunter2"
+	# Signing enforcement.
+	check_response "[$architecture] unsigned rejected" \
+		"http://127.0.0.1:$port/api/hello?name=Tee" 401 '"message":"Missing header X-Request-Id."'
+	check_signed "[$architecture] signed hello" \
+		"http://127.0.0.1:$port/api/hello?name=Tee" 200 '"message":"Hello, Tee!"'
+	check_signed "[$architecture] validation fail" \
+		"http://127.0.0.1:$port/api/hello?name=%20" 400 '"message":"Name must not be blank."'
+	check_signed "[$architecture] unknown path" \
+		"http://127.0.0.1:$port/api/nope" 404 '"message":"Resource not found: /api/nope"'
+
+	local stale
+	stale="$(signed_response "http://127.0.0.1:$port/api/hello?name=Tee" "" -600000)"
+	assert_response "[$architecture] stale timestamp rejected" "${stale##*$'\n'}" "${stale%$'\n'*}" \
+		401 '"message":"Request timestamp is outside the allowed window."'
+
+	local tampered
+	tampered="$(signed_response "http://127.0.0.1:$port/api/hello" '{"name":"Tee"}' 0 '{"name":"Eve"}' POST)"
+	assert_response "[$architecture] tampered body rejected" "${tampered##*$'\n'}" "${tampered%$'\n'*}" \
+		401 '"message":"Invalid request signature."'
+
+	# A signed remote call: exercises the pooled client, signing, logging, masking.
+	local request_id timestamp signature
+	request_id="$(cat /proc/sys/kernel/random/uuid)"
+	timestamp="$(date +%s%3N)"
+	signature="$(sign "$request_id" "$timestamp" "")"
+	check_response_remote() {
+		local label="$1"
+		local response status body
+		response="$(curl -s -w '\n%{http_code}' \
+			-H "X-Request-Id: $request_id" -H "X-Request-Timestamp: $timestamp" \
+			-H "X-Request-Signature: $signature" \
+			-H 'Authorization: Bearer topsecret' \
+			-H 'traceparent: 00-11111111111111111111111111111111-2222222222222222-01' \
+			"http://127.0.0.1:$port/api/hello/remote?name=Tee&password=hunter2")"
+		status="${response##*$'\n'}"
+		body="${response%$'\n'*}"
+		assert_response "$label" "$status" "$body" 200 '"message":"Hello, Tee!"' ""
+	}
+	check_response_remote "[$architecture] signed remote success"
 
 	local logfile="$work/app-$port.log"
 	check_log "[$architecture] request logged" "$logfile" '\[HTTP-REQUEST\] method : GET, uri : /api/hello'
 	check_log "[$architecture] response logged" "$logfile" '\[HTTP-RESPONSE\] method : GET, uri : /api/hello.*status : 200'
 	check_log "[$architecture] trace correlation" "$logfile" '\[[0-9a-f]{32}-[0-9a-f]{16}\]'
-	check_log "[$architecture] traceparent continued" "$logfile" '4bf92f3577b34da6a3ce929d0e0e4736'
+	check_log "[$architecture] traceparent continued" "$logfile" '11111111111111111111111111111111-[0-9a-f]{16}'
 	check_log_absent "[$architecture] actuator not logged" "$logfile" '/actuator/health'
 	check_log "[$architecture] password masked" "$logfile" 'password=\*\*\*'
 	check_log "[$architecture] authorization masked" "$logfile" 'authorization=\*\*\*'
 	check_log_absent "[$architecture] no clear password" "$logfile" 'hunter2'
 	check_log_absent "[$architecture] no clear token" "$logfile" 'topsecret'
+	check_log "[$architecture] security rejection logged" "$logfile" '\[SECURITY-ERROR\] (Missing header|Invalid request signature|Request timestamp)'
 
-	# Remote sample call through the pooled REST client.
-	check_response "[$architecture] remote success" "http://127.0.0.1:$port/api/hello/remote?name=Tee" 200 '"message":"Hello, Tee!"'
-	curl -s -o /dev/null \
-		-H 'traceparent: 00-11111111111111111111111111111111-2222222222222222-01' \
-		"http://127.0.0.1:$port/api/hello/remote?name=Tee"
 	check_log "[$architecture] rest client request" "$logfile" '\[RESTCLIENT-REQUEST\] method : GET, uri : http://localhost:'"$port"'/api/hello\?name=Tee'
 	check_log "[$architecture] rest client response" "$logfile" '\[RESTCLIENT-RESPONSE\] method : GET, uri : http://localhost:'"$port"'/api/hello\?name=Tee, status : 200'
 	check_log "[$architecture] rest client trace propagated" "$logfile" '11111111111111111111111111111111-[0-9a-f]{16}.*\[RESTCLIENT-REQUEST\]'
@@ -156,7 +233,20 @@ run_case() {
 	stop_app
 }
 
+# The Redis option adds a dependency and tests but is not started here.
+run_redis_case() {
+	local project="$work/redis-demo"
+	echo "e2e: [redis] generating project with request id checking"
+	"$bin" new redis-demo --group com.example --architecture layered \
+		--request-id-check --output "$work" --no-interactive
+
+	echo "e2e: [redis] building and testing"
+	(cd "$project" && ./mvnw -q -B verify)
+	echo "e2e: [redis] generated and built"
+}
+
 run_case layered 18080
 run_case clean 18081
+run_redis_case
 
 echo "e2e: passed"

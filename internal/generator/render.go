@@ -52,6 +52,8 @@ func hasSample(d Data) bool { return d.Sample }
 
 func hasUseCase(d Data) bool { return d.Sample && d.Architecture == "clean" }
 
+func hasRequestIDCheck(d Data) bool { return d.RequestIDCheck }
+
 // Templates ending in .tmpl are executed; everything else is copied verbatim
 // (the Maven wrapper scripts are large and contain no template syntax).
 var manifest = []templateEntry{
@@ -102,6 +104,21 @@ var manifest = []templateEntry{
 	{source: "restclient/RestClientProperties.java.tmpl", target: javaTarget(arch.RoleRestClient, "RestClientProperties.java", false)},
 	{source: "restclient/RestClientFactory.java.tmpl", target: javaTarget(arch.RoleRestClient, "RestClientFactory.java", false)},
 	{source: "restclient/RestClientFactoryTest.java.tmpl", target: javaTarget(arch.RoleRestClient, "RestClientFactoryTest.java", true)},
+
+	// Request signing and replay protection (always generated).
+	{source: "security/RequestSignatureProperties.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestSignatureProperties.java", false)},
+	{source: "security/RequestSigner.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestSigner.java", false)},
+	{source: "security/CachedBodyRequest.java.tmpl", target: javaTarget(arch.RoleSecurity, "CachedBodyRequest.java", false)},
+	{source: "security/RequestBodyTooLargeException.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestBodyTooLargeException.java", false)},
+	{source: "security/RequestIdStore.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestIdStore.java", false)},
+	{source: "security/NoOpRequestIdStore.java.tmpl", target: javaTarget(arch.RoleSecurity, "NoOpRequestIdStore.java", false)},
+	{source: "security/RequestSignatureConfig.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestSignatureConfig.java", false)},
+	{source: "security/RequestSignatureFilter.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestSignatureFilter.java", false)},
+	{source: "security/RequestSigningInterceptor.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestSigningInterceptor.java", false)},
+	{source: "security/RequestSignerTest.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestSignerTest.java", true)},
+	{source: "security/RequestSignatureFilterTest.java.tmpl", target: javaTarget(arch.RoleSecurity, "RequestSignatureFilterTest.java", true)},
+	{source: "security/RedisRequestIdStore.java.tmpl", target: javaTarget(arch.RoleSecurity, "RedisRequestIdStore.java", false), when: hasRequestIDCheck},
+	{source: "security/RedisRequestIdStoreTest.java.tmpl", target: javaTarget(arch.RoleSecurity, "RedisRequestIdStoreTest.java", true), when: hasRequestIDCheck},
 
 	// Hello sample: optional, and the use case port only exists in clean.
 	{source: "sample/Greeting.java.tmpl", target: javaTarget(arch.RoleModel, "Greeting.java", false), when: hasSample},

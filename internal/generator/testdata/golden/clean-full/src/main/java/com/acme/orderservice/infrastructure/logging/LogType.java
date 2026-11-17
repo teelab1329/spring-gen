@@ -22,6 +22,8 @@ public final class LogType {
 
 	public static final String RESTCLIENT_CONFIG = "[RESTCLIENT-CONFIG]";
 
+	public static final String SECURITY_ERROR = "[SECURITY-ERROR]";
+
 	private LogType() {
 	}
 

@@ -39,7 +39,8 @@ public record RestClientProperties(Defaults defaults, Map<String, Client> client
 	/** One downstream service. Only {@code baseUrl} is required. */
 	public record Client(String baseUrl, Duration connectTimeout, Duration readTimeout,
 			Duration connectionRequestTimeout, Integer maxConnections, Integer maxConnectionsPerRoute,
-			Duration timeToLive, Duration validateAfterInactivity, Duration evictIdleAfter) {
+			Duration timeToLive, Duration validateAfterInactivity, Duration evictIdleAfter,
+			Boolean signRequests) {
 	}
 
 }

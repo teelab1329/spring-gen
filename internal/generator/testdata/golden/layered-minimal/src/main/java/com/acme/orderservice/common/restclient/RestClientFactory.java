@@ -28,6 +28,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import com.acme.orderservice.common.logging.LogType;
+import com.acme.orderservice.common.security.RequestSigner;
+import com.acme.orderservice.common.security.RequestSigningInterceptor;
 
 /**
  * Builds one Apache HttpClient 5 connection pool per configured downstream
@@ -49,12 +51,12 @@ public class RestClientFactory implements AutoCloseable {
 	@Autowired
 	public RestClientFactory(RestClientProperties properties, RestClient.Builder builder,
 			ObjectProvider<MeterRegistry> meterRegistries,
-			@Value("${spring.application.name:spring-gen}") String applicationName) {
-		this(properties, builder, meterRegistries.getIfAvailable(), applicationName);
+			@Value("${spring.application.name:spring-gen}") String applicationName, RequestSigner signer) {
+		this(properties, builder, meterRegistries.getIfAvailable(), applicationName, signer);
 	}
 
 	RestClientFactory(RestClientProperties properties, RestClient.Builder builder, MeterRegistry meterRegistry,
-			String applicationName) {
+			String applicationName, RequestSigner signer) {
 		properties.clients().forEach((name, client) -> {
 			String baseUrl = client.baseUrl();
 			if (baseUrl == null || baseUrl.isBlank()) {
@@ -96,11 +98,18 @@ public class RestClientFactory implements AutoCloseable {
 			HttpComponentsClientHttpRequestFactory requestFactory =
 				new HttpComponentsClientHttpRequestFactory(httpClient);
 
-			clients.put(name, builder.clone()
+			RestClient.Builder clientBuilder = builder.clone()
 				.baseUrl(baseUrl)
 				.requestFactory(requestFactory)
-				.defaultHeader(HttpHeaders.USER_AGENT, applicationName + "-restclient")
-				.build());
+				.defaultHeader(HttpHeaders.USER_AGENT, applicationName + "-restclient");
+			if (Boolean.TRUE.equals(client.signRequests())) {
+				if (signer == null) {
+					throw new IllegalStateException("app.rest-clients.clients." + name
+						+ ".sign-requests requires request signing to be available");
+				}
+				clientBuilder.requestInterceptor(new RequestSigningInterceptor(signer));
+			}
+			clients.put(name, clientBuilder.build());
 			httpClients.put(name, httpClient);
 
 			log.info("{} client : {}, baseUri : {}, maxConnections : {}, "

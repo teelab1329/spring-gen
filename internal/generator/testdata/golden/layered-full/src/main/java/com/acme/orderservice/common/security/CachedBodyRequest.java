@@ -1,0 +1,98 @@
+package com.acme.orderservice.common.security;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+
+import jakarta.servlet.ReadListener;
+import jakarta.servlet.ServletInputStream;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
+
+/**
+ * Reads the body once, so the signature check and the controller see identical
+ * bytes. Requests larger than the configured limit are rejected before hashing.
+ */
+public class CachedBodyRequest extends HttpServletRequestWrapper {
+
+	private final byte[] body;
+
+	public CachedBodyRequest(HttpServletRequest request, int maxBytes) throws IOException {
+		super(request);
+		byte[] read = request.getInputStream().readNBytes(maxBytes + 1);
+		if (read.length > maxBytes) {
+			throw new RequestBodyTooLargeException();
+		}
+		this.body = read;
+	}
+
+	public byte[] body() {
+		return body;
+	}
+
+	@Override
+	public ServletInputStream getInputStream() {
+		ByteArrayInputStream source = new ByteArrayInputStream(body);
+		return new ServletInputStream() {
+
+			@Override
+			public int read() {
+				return source.read();
+			}
+
+			@Override
+			public int read(byte[] buffer, int offset, int length) {
+				return source.read(buffer, offset, length);
+			}
+
+			@Override
+			public boolean isFinished() {
+				return source.available() == 0;
+			}
+
+			@Override
+			public boolean isReady() {
+				return true;
+			}
+
+			@Override
+			public void setReadListener(ReadListener listener) {
+				throw new UnsupportedOperationException("async reads are not supported");
+			}
+
+		};
+	}
+
+	@Override
+	public BufferedReader getReader() {
+		return new BufferedReader(new InputStreamReader(getInputStream(), charset()));
+	}
+
+	@Override
+	public int getContentLength() {
+		return body.length;
+	}
+
+	@Override
+	public long getContentLengthLong() {
+		return body.length;
+	}
+
+	private Charset charset() {
+		String encoding = getCharacterEncoding();
+		if (encoding == null || encoding.isBlank()) {
+			return StandardCharsets.UTF_8;
+		}
+		try {
+			return Charset.forName(encoding);
+		}
+		catch (RuntimeException ex) {
+			return StandardCharsets.UTF_8;
+		}
+	}
+
+}

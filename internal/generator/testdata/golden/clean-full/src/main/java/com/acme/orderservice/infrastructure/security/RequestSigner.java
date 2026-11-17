@@ -1,0 +1,54 @@
+package com.acme.orderservice.infrastructure.security;
+
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.util.Base64;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.springframework.stereotype.Component;
+
+/**
+ * Computes and verifies request signatures:
+ * {@code Base64(HMAC-SHA256(secret, requestId + timestamp + Base64(rawBody)))}.
+ */
+@Component
+public class RequestSigner {
+
+	private static final String ALGORITHM = "HmacSHA256";
+
+	private final byte[] secret;
+
+	public RequestSigner(RequestSignatureProperties properties) {
+		String value = properties.secret();
+		if (properties.isEnabled() && (value == null || value.isBlank())) {
+			throw new IllegalStateException(
+				"app.security.request-signature.secret must be set when request signing is enabled");
+		}
+		this.secret = value == null ? new byte[0] : value.getBytes(StandardCharsets.UTF_8);
+	}
+
+	public String sign(String requestId, String timestamp, byte[] body) {
+		String payload = requestId + timestamp + Base64.getEncoder().encodeToString(body);
+		try {
+			Mac mac = Mac.getInstance(ALGORITHM);
+			mac.init(new SecretKeySpec(secret, ALGORITHM));
+			return Base64.getEncoder().encodeToString(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+		}
+		catch (GeneralSecurityException ex) {
+			throw new IllegalStateException("HMAC-SHA256 is unavailable", ex);
+		}
+	}
+
+	/** Constant-time comparison, so timing cannot leak how much of the signature matched. */
+	public boolean matches(String requestId, String timestamp, byte[] body, String signature) {
+		if (signature == null) {
+			return false;
+		}
+		return MessageDigest.isEqual(sign(requestId, timestamp, body).getBytes(StandardCharsets.US_ASCII),
+			signature.getBytes(StandardCharsets.US_ASCII));
+	}
+
+}

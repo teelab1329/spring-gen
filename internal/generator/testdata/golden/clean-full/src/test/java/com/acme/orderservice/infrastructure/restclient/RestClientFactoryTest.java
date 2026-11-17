@@ -17,6 +17,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import com.acme.orderservice.infrastructure.security.RequestSignatureProperties;
+import com.acme.orderservice.infrastructure.security.RequestSigner;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -33,6 +35,12 @@ class RestClientFactoryTest {
 
 	private final AtomicInteger calls = new AtomicInteger();
 
+	private volatile String lastRequestId;
+
+	private volatile String lastTimestamp;
+
+	private volatile String lastSignature;
+
 	@BeforeEach
 	void startStub() throws IOException {
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -43,6 +51,13 @@ class RestClientFactoryTest {
 		server.createContext("/api/slow", (exchange) -> {
 			calls.incrementAndGet();
 			sleep(500);
+			respond(exchange, 200);
+		});
+		server.createContext("/api/signed", (exchange) -> {
+			calls.incrementAndGet();
+			lastRequestId = exchange.getRequestHeaders().getFirst("X-Request-Id");
+			lastTimestamp = exchange.getRequestHeaders().getFirst("X-Request-Timestamp");
+			lastSignature = exchange.getRequestHeaders().getFirst("X-Request-Signature");
 			respond(exchange, 200);
 		});
 		server.createContext("/api/redirect", (exchange) -> {
@@ -80,7 +95,7 @@ class RestClientFactoryTest {
 	@Test
 	void appliesReadTimeoutWithoutRetrying() {
 		RestClientProperties.Client slow = new RestClientProperties.Client(baseUrl, null,
-			Duration.ofMillis(100), null, null, null, null, null, null);
+			Duration.ofMillis(100), null, null, null, null, null, null, null);
 		RestClientFactory factory = factory(defaults(Duration.ofSeconds(2), Duration.ofSeconds(5)),
 			Map.of("slow", slow));
 
@@ -105,6 +120,24 @@ class RestClientFactoryTest {
 	}
 
 	@Test
+	void signsOutboundRequestsWhenConfigured() {
+		RequestSigner signer = new RequestSigner(new RequestSignatureProperties(true, "test-secret",
+			Duration.ofMinutes(5), null, java.util.List.of("/api/**"), java.util.List.of(), null));
+		RestClientProperties.Client signing = new RestClientProperties.Client(baseUrl, null, null, null, null,
+			null, null, null, null, true);
+		RestClientFactory factory = new RestClientFactory(
+			new RestClientProperties(defaults(Duration.ofSeconds(2), Duration.ofSeconds(5)),
+				Map.of("signed", signing)),
+			RestClient.builder(), meterRegistry, "test-app", signer);
+
+		factory.get("signed").get().uri("/api/signed").retrieve().body(String.class);
+
+		assertThat(lastRequestId).isNotBlank();
+		assertThat(lastTimestamp).isNotBlank();
+		assertThat(signer.matches(lastRequestId, lastTimestamp, new byte[0], lastSignature)).isTrue();
+	}
+
+	@Test
 	void listsConfiguredClientsForUnknownNames() {
 		RestClientFactory factory = factory(defaults(Duration.ofSeconds(2), Duration.ofSeconds(5)),
 			Map.of("echo", client(baseUrl)));
@@ -117,7 +150,7 @@ class RestClientFactoryTest {
 	@Test
 	void failsFastOnMissingBaseUrl() {
 		RestClientProperties.Client missing = new RestClientProperties.Client(null, null, null, null, null, null,
-			null, null, null);
+			null, null, null, null);
 
 		assertThatThrownBy(() -> factory(defaults(Duration.ofSeconds(2), Duration.ofSeconds(5)),
 			Map.of("bad", missing)))
@@ -139,7 +172,7 @@ class RestClientFactoryTest {
 	private RestClientFactory factory(RestClientProperties.Defaults defaults,
 			Map<String, RestClientProperties.Client> clients) {
 		return new RestClientFactory(new RestClientProperties(defaults, clients), RestClient.builder(),
-			meterRegistry, "test-app");
+			meterRegistry, "test-app", null);
 	}
 
 	private static RestClientProperties.Defaults defaults(Duration connect, Duration read) {
@@ -148,7 +181,7 @@ class RestClientFactoryTest {
 	}
 
 	private static RestClientProperties.Client client(String baseUrl) {
-		return new RestClientProperties.Client(baseUrl, null, null, null, null, null, null, null, null);
+		return new RestClientProperties.Client(baseUrl, null, null, null, null, null, null, null, null, null);
 	}
 
 	private static void respond(HttpExchange exchange, int status) throws IOException {

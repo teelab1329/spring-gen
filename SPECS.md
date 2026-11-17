@@ -26,6 +26,7 @@ spring-gen version
 | `--architecture` | `layered` or `clean` (completion provided) | prompt |
 | `--virtual-threads` | enable virtual threads; disable with `--virtual-threads=false` | true / prompt |
 | `--sample` | include the Hello sample endpoint; disable with `--sample=false` | true / prompt |
+| `--request-id-check` | Redis-backed duplicate request id detection | false / prompt |
 | `--output` | parent directory for the new project | `.` |
 | `--no-interactive` | never prompt; error on missing required values | false |
 | `--force` | overwrite a non-empty target directory | false |
@@ -352,6 +353,74 @@ Sample (with `--sample`): `GET /api/hello/remote` calls this same service throug
 the `greeting` client, producing `[RESTCLIENT-REQUEST]`/`[RESTCLIENT-RESPONSE]`
 lines and an inner `[HTTP-REQUEST]` sharing the trace id.
 
+## 4.4 Request signing
+
+Every generated service validates three headers on `include-paths` (`/api/**`
+by default):
+
+```
+X-Request-Id:        1–64 chars matching [A-Za-z0-9-]
+X-Request-Timestamp: epoch milliseconds
+X-Request-Signature: Base64(HMAC-SHA256(secret, requestId + timestamp + Base64(rawBody)))
+```
+
+`Base64("")` is empty, so a bodyless GET is signed over
+`requestId + timestamp`.
+
+Checks run in this order:
+
+1. headers present and well-formed → `401`
+2. timestamp within `max-clock-skew` (default `5m`, both directions) → `401`
+3. signature compared in constant time → `401`
+4. duplicate request id (optional) → `409`; store unreachable → `503`
+
+Order matters: the id is stored only after the request is proven authentic, so
+unauthenticated traffic cannot burn a real client's id. The filter writes JSend
+failures itself (an advice cannot handle filter errors) and logs
+`[SECURITY-ERROR] <message> requestId : …, uri : …`.
+
+```yaml
+app:
+  security:
+    request-signature:
+      enabled: true
+      secret: ${REQUEST_SIGNING_SECRET:}   # startup fails when enabled and empty
+      max-clock-skew: 5m
+      max-body-size: 1MB                   # larger bodies → 413
+      include-paths: [/api/**]
+      exclude-paths: [/actuator/**]
+      request-id-check:                    # only generated with --request-id-check
+        enabled: true
+        key-prefix: "req-id:"
+```
+
+- `RequestSignatureFilter` is registered at `Ordered.HIGHEST_PRECEDENCE + 20`,
+  inside the HTTP logging filter (`+10`), so rejected requests are logged and
+  keep their trace id. Do not move it outside.
+- The body is read once into `CachedBodyRequest` and replayed, so the controller
+  sees exactly the signed bytes.
+- Outgoing calls from `RestClientFactory` get `sign-requests: true`; the
+  interceptor generates and signs a fresh id per call. The sample `greeting`
+  client sets it, because it calls this service's own signed endpoint.
+- `RequestSignerTest` pins a known-answer signature so client teams can check
+  their implementation.
+
+Known limitations:
+
+- The signed string omits the HTTP method and path, so within the clock window a
+  captured request could be replayed against a different endpoint with the same
+  body. The duplicate-id check closes that; without it only the time window
+  protects.
+- One shared secret; there is no per-client key or key id.
+- `application/x-www-form-urlencoded` POSTs are not supported: Tomcat consumes
+  form parameters from the original stream, bypassing the cached copy.
+
+With `--request-id-check`: `spring-boot-starter-data-redis` is added,
+`RedisRequestIdStore` uses `SET NX` with a TTL of twice `max-clock-skew`, and
+`management.health.redis.enabled` is turned off with a TODO so Redis cannot fail
+probes before you decide. TODOs in the store cover Redis topology, key prefix and
+outage policy.
+
 ## 5. Template layout
 
 ```
@@ -363,6 +432,8 @@ internal/assets/
                               mvn/wrapper/maven-wrapper.properties
     jsend/                    JSendResponse, ValidationException, BusinessException,
                               GlobalExceptionHandler (+ test)
+    security/                 request signature filter, signer, cached body,
+                              request id store (Redis only with the option)
     logging/                  LogType, HttpLoggingProperties, HttpLoggingConfig,
                               HttpLoggingFilter, RestClientLoggingInterceptor,
                               LogMasker + masking classes (+ tests)
@@ -447,8 +518,9 @@ an optional `when(Data)` condition.
 - Smoke: generate a project into `t.TempDir()`; assert the pom pins Boot and
   Java and that no staging directory remains.
 - `make e2e` (not part of `go test`): for each architecture, generate,
-  `./mvnw verify`, start the jar, and check health, JSend success, 400 fail,
-  404 fail.
+  `./mvnw verify`, start the jar, and check health, unsigned rejection, signed
+  success, stale timestamp, tampered body, JSend results, masked logs, and the
+  pooled REST client. A Redis project is generated and built but not started.
 
 ## 8. Package layout
 
@@ -473,6 +545,7 @@ Resolved:
 - `new` does not run `git init` in the generated project.
 - Architectures are `layered` and `clean`, resolved by `internal/generator/arch`.
 - Virtual threads default to on; the sample endpoint defaults to on.
+- Request id duplicate detection is opt-in (`--request-id-check`) and adds Redis.
 
 Open:
 

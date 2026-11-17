@@ -1,0 +1,66 @@
+package com.acme.orderservice.infrastructure.security;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.util.unit.DataSize;
+
+class RequestSignerTest {
+
+	private static final byte[] BODY = "{\"name\":\"Tee\"}".getBytes(StandardCharsets.UTF_8);
+
+	@Test
+	void producesTheDocumentedSignature() {
+		// Base64(HMAC-SHA256("test-secret", "req-1" + "1795430400123" + Base64(body)))
+		// Client implementations must reproduce this value.
+		RequestSigner signer = signer("test-secret");
+
+		assertThat(signer.sign("req-1", "1795430400123", BODY))
+			.isEqualTo("rwNv/hPMiDdlWJ+RmdqKNmfqA6+MKxcB6tKSZo8Fpqw=");
+	}
+
+	@Test
+	void matchesOnlyTheSameRequest() {
+		RequestSigner signer = signer("test-secret");
+		String signature = signer.sign("req-1", "1795430400123", BODY);
+
+		assertThat(signer.matches("req-1", "1795430400123", BODY, signature)).isTrue();
+		assertThat(signer.matches("req-2", "1795430400123", BODY, signature)).isFalse();
+		assertThat(signer.matches("req-1", "1795430400124", BODY, signature)).isFalse();
+		assertThat(signer.matches("req-1", "1795430400123", "{}".getBytes(StandardCharsets.UTF_8), signature))
+			.isFalse();
+		assertThat(signer.matches("req-1", "1795430400123", BODY, null)).isFalse();
+	}
+
+	@Test
+	void requiresASecretWhenEnabled() {
+		assertThatThrownBy(() -> new RequestSigner(properties(null)))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("secret");
+	}
+
+	@Test
+	void allowsAnEmptySecretWhenDisabled() {
+		assertThat(new RequestSigner(propertiesDisabled())).isNotNull();
+	}
+
+	private static RequestSigner signer(String secret) {
+		return new RequestSigner(properties(secret));
+	}
+
+	private static RequestSignatureProperties properties(String secret) {
+		return new RequestSignatureProperties(true, secret, Duration.ofMinutes(5), DataSize.ofMegabytes(1),
+			List.of("/api/**"), List.of(), null);
+	}
+
+	private static RequestSignatureProperties propertiesDisabled() {
+		return new RequestSignatureProperties(false, null, Duration.ofMinutes(5), DataSize.ofMegabytes(1),
+			List.of("/api/**"), List.of(), null);
+	}
+
+}

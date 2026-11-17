@@ -1,0 +1,40 @@
+package {{ .Package "security" }};
+
+import java.time.Duration;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Component;
+
+/**
+ * Redis-backed duplicate detection using {@code SET NX} with a TTL.
+ *
+ * <p>TODO: point {@code spring.data.redis.*} at your instance (password, TLS,
+ * cluster or sentinel) and confirm the topology with your platform team.</p>
+ * <p>TODO: tune {@code key-prefix} per environment and confirm the TTL policy
+ * (the filter uses twice the allowed clock skew).</p>
+ * <p>TODO: decide how Redis outages should surface. Today the request fails
+ * closed with 503; switch to a queue, local cache, or fail-open only
+ * deliberately.</p>
+ */
+@Component
+@ConditionalOnProperty(prefix = "app.security.request-signature.request-id-check", name = "enabled",
+		havingValue = "true")
+public class RedisRequestIdStore implements RequestIdStore {
+
+	private final StringRedisTemplate redis;
+
+	private final String keyPrefix;
+
+	public RedisRequestIdStore(StringRedisTemplate redis, RequestSignatureProperties properties) {
+		this.redis = redis;
+		this.keyPrefix = properties.requestIdCheck().keyPrefix();
+	}
+
+	@Override
+	public boolean markIfAbsent(String requestId, Duration ttl) {
+		Boolean added = redis.opsForValue().setIfAbsent(keyPrefix + requestId, "1", ttl);
+		return Boolean.TRUE.equals(added);
+	}
+
+}

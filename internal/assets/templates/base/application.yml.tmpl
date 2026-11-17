@@ -6,6 +6,13 @@ spring:
     virtual:
       enabled: true
 {{- end }}
+{{- if .RequestIDCheck }}
+  data:
+    redis:
+      # TODO: point at your Redis instance and add password/TLS/cluster settings.
+      host: localhost
+      port: 6379
+{{- end }}
 
 logging:
   level:
@@ -21,6 +28,12 @@ management:
   tracing:
     sampling:
       probability: 1.0
+{{- if .RequestIDCheck }}
+  health:
+    redis:
+      # TODO: decide whether Redis health should gate your probes.
+      enabled: false
+{{- end }}
 
 # HTTP request/response logging with OpenTelemetry-style fields.
 # There is no trace exporter: ids only annotate this application's log lines.
@@ -45,6 +58,20 @@ app:
           keys: [email, emailAddress, email_address]
         - type: HASH
           keys: [nationalId, national_id, phone, phoneNumber, phone_number]
+  security:
+    request-signature:
+      # Set REQUEST_SIGNING_SECRET in the environment; startup fails when empty.
+      enabled: true
+      secret: ${REQUEST_SIGNING_SECRET:}
+      max-clock-skew: 5m
+      max-body-size: 1MB
+      include-paths: [/api/**]
+      exclude-paths: [/actuator/**]
+{{- if .RequestIDCheck }}
+      request-id-check:
+        enabled: true
+        key-prefix: "req-id:"
+{{- end }}
   rest-clients:
     # One connection pool per downstream service. Values below are the
     # recommended defaults; each client may override any of them.
@@ -62,4 +89,6 @@ app:
       greeting:
         base-url: http://localhost:${server.port:8080}
         read-timeout: 3s
+        # Signs calls with REQUEST_SIGNING_SECRET so this service can call itself.
+        sign-requests: true
 {{- end }}

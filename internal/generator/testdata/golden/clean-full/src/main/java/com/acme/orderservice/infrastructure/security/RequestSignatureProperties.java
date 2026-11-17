@@ -1,0 +1,45 @@
+package com.acme.orderservice.infrastructure.security;
+
+import java.time.Duration;
+import java.util.List;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
+
+/**
+ * Inbound request signing: {@code X-Request-Id}, {@code X-Request-Timestamp}
+ * (epoch milliseconds) and {@code X-Request-Signature}
+ * (Base64 of HMAC-SHA256 over {@code requestId + timestamp + Base64(rawBody)}).
+ */
+@ConfigurationProperties("app.security.request-signature")
+public record RequestSignatureProperties(Boolean enabled, String secret, Duration maxClockSkew,
+		DataSize maxBodySize, List<String> includePaths, List<String> excludePaths,
+		RequestIdCheck requestIdCheck) {
+
+	public RequestSignatureProperties {
+		enabled = enabled != null && enabled;
+		maxClockSkew = maxClockSkew == null ? Duration.ofMinutes(5) : maxClockSkew;
+		maxBodySize = maxBodySize == null ? DataSize.ofMegabytes(1) : maxBodySize;
+		includePaths = (includePaths == null || includePaths.isEmpty()) ? List.of("/api/**") : List.copyOf(includePaths);
+		excludePaths = excludePaths == null ? List.of() : List.copyOf(excludePaths);
+		requestIdCheck = requestIdCheck == null ? new RequestIdCheck(null, null) : requestIdCheck;
+	}
+
+	public boolean isEnabled() {
+		return enabled;
+	}
+
+	public record RequestIdCheck(Boolean enabled, String keyPrefix) {
+
+		public RequestIdCheck {
+			enabled = enabled != null && enabled;
+			keyPrefix = (keyPrefix == null || keyPrefix.isBlank()) ? "req-id:" : keyPrefix;
+		}
+
+		public boolean isEnabled() {
+			return enabled;
+		}
+
+	}
+
+}

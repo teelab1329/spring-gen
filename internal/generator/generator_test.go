@@ -146,6 +146,10 @@ func TestGenerateWritesRunnableProject(t *testing.T) {
 		"src/test/java/com/acme/orderservice/common/logging/HttpLoggingFilterTest.java",
 		"src/test/java/com/acme/orderservice/common/logging/RestClientLoggingInterceptorTest.java",
 		"src/main/java/com/acme/orderservice/common/restclient/RestClientFactory.java",
+		"src/main/java/com/acme/orderservice/common/security/RequestSignatureFilter.java",
+		"src/main/java/com/acme/orderservice/common/security/RequestSigner.java",
+		"src/main/java/com/acme/orderservice/common/security/RequestSigningInterceptor.java",
+		"src/test/java/com/acme/orderservice/common/security/RequestSignatureFilterTest.java",
 		"src/test/java/com/acme/orderservice/common/restclient/RestClientFactoryTest.java",
 		"src/main/java/com/acme/orderservice/client/GreetingClient.java",
 		"src/main/java/com/acme/orderservice/controller/HelloController.java",
@@ -225,6 +229,7 @@ func TestGenerateCleanArchitecture(t *testing.T) {
 		"src/main/java/com/acme/orderservice/infrastructure/web/dto/HelloResponse.java",
 		"src/main/java/com/acme/orderservice/infrastructure/logging/HttpLoggingFilter.java",
 		"src/main/java/com/acme/orderservice/infrastructure/restclient/RestClientFactory.java",
+		"src/main/java/com/acme/orderservice/infrastructure/security/RequestSignatureFilter.java",
 		"src/main/java/com/acme/orderservice/infrastructure/client/GreetingClient.java",
 		"src/main/java/com/acme/orderservice/application/port/out/GreetingGateway.java",
 		"src/test/java/com/acme/orderservice/infrastructure/web/HelloControllerTest.java",
@@ -303,6 +308,66 @@ func TestGenerateWithVirtualThreads(t *testing.T) {
 	}
 	if !strings.Contains(string(yml), "virtual:\n      enabled: true") {
 		t.Errorf("application.yml does not enable virtual threads:\n%s", yml)
+	}
+}
+
+func TestGenerateWithRequestIDCheck(t *testing.T) {
+	in := validInput("demo")
+	in.RequestIDCheck = true
+	in.Output = t.TempDir()
+
+	result, err := Generate(in)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	for _, path := range []string{
+		"src/main/java/com/acme/demo/common/security/RedisRequestIdStore.java",
+		"src/test/java/com/acme/demo/common/security/RedisRequestIdStoreTest.java",
+	} {
+		if _, statErr := os.Stat(filepath.Join(result.Dir, filepath.FromSlash(path))); statErr != nil {
+			t.Errorf("missing generated file %s: %v", path, statErr)
+		}
+	}
+
+	pom, err := os.ReadFile(filepath.Join(result.Dir, "pom.xml"))
+	if err != nil {
+		t.Fatalf("read pom.xml: %v", err)
+	}
+	if !strings.Contains(string(pom), "spring-boot-starter-data-redis") {
+		t.Error("pom.xml does not include the Redis starter")
+	}
+
+	yml, err := os.ReadFile(filepath.Join(result.Dir, "src/main/resources/application.yml"))
+	if err != nil {
+		t.Fatalf("read application.yml: %v", err)
+	}
+	if !strings.Contains(string(yml), "request-id-check:") {
+		t.Errorf("application.yml does not enable request id checking:\n%s", yml)
+	}
+}
+
+func TestGenerateWithoutRequestIDCheckHasNoRedis(t *testing.T) {
+	in := validInput("demo")
+	in.Output = t.TempDir()
+
+	result, err := Generate(in)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	for _, file := range result.Files {
+		if strings.Contains(file, "RedisRequestIdStore") {
+			t.Errorf("Redis file %s generated without --request-id-check", file)
+		}
+	}
+
+	pom, err := os.ReadFile(filepath.Join(result.Dir, "pom.xml"))
+	if err != nil {
+		t.Fatalf("read pom.xml: %v", err)
+	}
+	if strings.Contains(string(pom), "data-redis") {
+		t.Error("pom.xml includes the Redis starter without --request-id-check")
 	}
 }
 
