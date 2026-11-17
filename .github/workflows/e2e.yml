@@ -1,0 +1,36 @@
+name: E2E
+
+# Runs the generated-project flow on a real JDK 21 (local development only has
+# JDK 25). Paths keep it off doc-only changes.
+on:
+  pull_request:
+    paths:
+      - "internal/**"
+      - "cmd/**"
+      - "scripts/e2e.sh"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: make e2e (JDK 21)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: make e2e

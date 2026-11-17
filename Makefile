@@ -6,6 +6,7 @@ MODULE  := github.com/teelab1329/spring-gen
 VER_PKG := $(MODULE)/internal/version
 
 GO ?= go
+GORELEASER_VERSION ?= v2.20.2
 
 # Override on the command line for releases, e.g. `make build VERSION=v0.1.0`.
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -14,7 +15,7 @@ DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -X $(VER_PKG).Version=$(VERSION) -X $(VER_PKG).Commit=$(COMMIT) -X $(VER_PKG).Date=$(DATE)
 
-.PHONY: all verify fmt fmt-check vet test golden build e2e clean
+.PHONY: all verify fmt fmt-check vet test golden build snapshot e2e clean
 
 all: verify
 
@@ -43,6 +44,10 @@ golden:
 build:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)
+
+# Build all release archives locally into dist/ without publishing.
+snapshot:
+	GOTOOLCHAIN=auto $(GO) run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION) release --snapshot --clean
 
 # Generate a project, build it with Maven, start it, and probe /actuator/health.
 e2e: build
