@@ -19,6 +19,7 @@ func TestPackagePerArchitecture(t *testing.T) {
 		{"layered", RoleLogging, "common.logging"},
 		{"layered", RoleRestClient, "common.restclient"},
 		{"layered", RoleClient, "client"},
+		{"layered", RoleSecurity, "common.security"},
 		{"clean", RoleController, "infrastructure.web"},
 		{"clean", RoleUseCase, "application.port.in"},
 		{"clean", RoleService, "application.service"},
@@ -29,6 +30,7 @@ func TestPackagePerArchitecture(t *testing.T) {
 		{"clean", RoleRestClient, "infrastructure.restclient"},
 		{"clean", RoleClient, "infrastructure.client"},
 		{"clean", RoleOutPort, "application.port.out"},
+		{"clean", RoleSecurity, "infrastructure.security"},
 	}
 
 	for _, test := range tests {

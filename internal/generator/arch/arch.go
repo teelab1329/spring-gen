@@ -21,6 +21,7 @@ const (
 	RoleRestClient Role = "restclient" // outbound REST client wiring
 	RoleClient     Role = "client"     // outbound client adapters
 	RoleOutPort    Role = "outport"    // outbound port (clean only)
+	RoleSecurity   Role = "security"   // request signing and replay protection
 )
 
 // Architecture is one named role-to-package mapping. Packages are suffixes
@@ -62,6 +63,7 @@ var registry = []Architecture{
 			RoleLogging:    "common.logging",
 			RoleRestClient: "common.restclient",
 			RoleClient:     "client",
+			RoleSecurity:   "common.security",
 		},
 	},
 	{
@@ -80,6 +82,7 @@ var registry = []Architecture{
 			RoleRestClient: "infrastructure.restclient",
 			RoleClient:     "infrastructure.client",
 			RoleOutPort:    "application.port.out",
+			RoleSecurity:   "infrastructure.security",
 		},
 	},
 }

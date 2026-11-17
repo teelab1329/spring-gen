@@ -37,6 +37,12 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Masking is global, never per log call: `logback-spring.xml` redefines `%m` and registers `%maskedEx` (both are needed), and `app.logging.masking.rules` drive `LogMasker`. Do not reintroduce masking inside filters/interceptors; it would double-mask and miss other libraries.
 - Outbound HTTP goes through `RestClientFactory.get(name)`, which clones Boot's `RestClient.Builder`. `RestClient.create()` or `new RestTemplate()` bypasses the pool, trace propagation, and REST client logging. Do not enable retries or redirect following without asking.
 
+## Request signing
+- `RequestSignatureFilter` runs at `HIGHEST_PRECEDENCE + 20`, inside the logging filter (`+10`). Moving it outside hides security failures from the log and drops trace ids.
+- Check order is timestamp → signature → duplicate id; never store an id before the signature is verified.
+- `X-Request-Signature = Base64(HMAC-SHA256(secret, requestId + timestamp + Base64(rawBody)))`. Rejections log `[SECURITY-ERROR]` and return JSend `fail`. Adding a tag means updating `LogType` and this rule.
+- Outgoing clients that call a signed service set `sign-requests: true`; the interceptor signs every call.
+
 ## Cobra
 - Use the vendored skill `.agents/skills/golang-spf13-cobra` (pinned in `skills-lock.json`).
 - `RunE` only, and write to `cmd.OutOrStdout()` / `cmd.ErrOrStderr()` so tests capture output.
@@ -46,5 +52,5 @@ Go CLI (Cobra) that generates Spring Boot projects from templates embedded in th
 - Run it: `go run ./cmd/spring-gen version`. Release builds inject version data with
   `-ldflags "-X github.com/teelab1329/spring-gen/internal/version.Version=vX.Y.Z"` (also `.Commit`, `.Date`); empty values fall back to Go's embedded build metadata.
 - Golden tests pin the rendered tree in `internal/generator/testdata/golden/**`. Regenerate with `make golden`, then review the diff; never hand-edit golden files.
-- `make e2e` runs the full flow for **both** architectures: generate, `./mvnw verify`, start the jar, then check `/actuator/health`, a JSend success, a 400 fail, a 404 fail, and the log lines (request/response, `[traceId-spanId]` prefix, `traceparent` continuation, `/actuator/**` not logged). Run it after touching templates or the generator; it needs network on first run.
+- `make e2e` runs the full flow for **both** architectures: generate, `./mvnw verify`, start the jar, then check `/actuator/health`, unsigned rejection, signed success (openssl), stale timestamp, tampered body, JSend results, log lines and masking, the pooled REST client, and that a `--request-id-check` project builds. Run it after touching templates or the generator; it needs network on first run.
 - The only JDK installed is 25, so generated projects are compiled with `--release 21` (via `<java.version>21</java.version>`). This is not proof the build works on a real JDK 21.

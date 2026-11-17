@@ -103,7 +103,7 @@ func TestNewPromptsForMissingValues(t *testing.T) {
 
 	// name, group, description, architecture, virtual threads, sample
 	stdout, stderr, err := runNewWith(t,
-		"order-service\ncom.acme\n\n1\n\n\n",
+		"order-service\ncom.acme\n\n1\n\n\n\n",
 		"--output", output,
 	)
 	if err != nil {
@@ -124,6 +124,7 @@ func TestNewPromptsForMissingValues(t *testing.T) {
 		"1) layered",
 		"Enable virtual threads? [Y/n]",
 		"Include a sample Hello endpoint? [Y/n]",
+		"Enable request id duplicate check (requires Redis)? [y/N]",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr does not contain %q:\n%s", want, stderr)
@@ -149,7 +150,7 @@ func TestNewReasksAfterInvalidAnswers(t *testing.T) {
 	// invalid name, valid name, invalid group, valid group, default description,
 	// two invalid architecture answers, "clean", invalid yes/no, "y", "n"
 	stdout, stderr, err := runNewWith(t,
-		"Bad_Name\norder-service\nacme\ncom.acme\n\n3\n0\nclean\nmaybe\ny\nn\n",
+		"Bad_Name\norder-service\nacme\ncom.acme\n\n3\n0\nclean\nmaybe\ny\nn\n\n",
 		"--output", output,
 	)
 	if err != nil {
@@ -232,6 +233,7 @@ func TestNewSkipsPromptForExplicitFlags(t *testing.T) {
 		"--architecture", "clean",
 		"--virtual-threads=false",
 		"--sample=false",
+		"--request-id-check=false",
 		"--output", output,
 	)
 	if err != nil {

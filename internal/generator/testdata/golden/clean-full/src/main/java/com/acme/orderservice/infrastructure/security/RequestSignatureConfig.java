@@ -1,0 +1,35 @@
+package com.acme.orderservice.infrastructure.security;
+
+import java.time.Clock;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(RequestSignatureProperties.class)
+public class RequestSignatureConfig {
+
+	@Bean
+	public Clock clock() {
+		return Clock.systemUTC();
+	}
+
+	@Bean
+	@ConditionalOnProperty(prefix = "app.security.request-signature", name = "enabled", havingValue = "true")
+	public FilterRegistrationBean<RequestSignatureFilter> requestSignatureFilter(
+			RequestSignatureProperties properties, RequestSigner signer, RequestIdStore requestIdStore,
+			ObjectMapper objectMapper, Clock clock) {
+		FilterRegistrationBean<RequestSignatureFilter> registration = new FilterRegistrationBean<>(
+			new RequestSignatureFilter(properties, signer, requestIdStore, objectMapper, clock));
+		// Inside the HTTP logging filter (+10), so rejections are logged and
+		// correlated. Moving this outside would hide security failures.
+		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
+		return registration;
+	}
+
+}

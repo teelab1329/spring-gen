@@ -24,6 +24,9 @@ func TestGolden(t *testing.T) {
 			in.VirtualThreads = false
 			in.Sample = false
 		}, "layered-minimal"},
+		{"layered redis", func(in *Input) {
+			in.RequestIDCheck = true
+		}, "layered-full-redis"},
 	}
 
 	for _, test := range tests {

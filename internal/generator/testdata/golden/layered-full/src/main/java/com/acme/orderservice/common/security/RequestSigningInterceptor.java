@@ -1,0 +1,37 @@
+package com.acme.orderservice.common.security;
+
+import java.io.IOException;
+import java.util.UUID;
+
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestExecution;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.ClientHttpResponse;
+
+/**
+ * Signs outgoing calls for REST clients configured with
+ * {@code sign-requests: true}.
+ */
+public class RequestSigningInterceptor implements ClientHttpRequestInterceptor {
+
+	private final RequestSigner signer;
+
+	public RequestSigningInterceptor(RequestSigner signer) {
+		this.signer = signer;
+	}
+
+	@Override
+	public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
+			throws IOException {
+		String requestId = UUID.randomUUID().toString();
+		String timestamp = Long.toString(System.currentTimeMillis());
+
+		request.getHeaders().set(RequestSignatureFilter.REQUEST_ID_HEADER, requestId);
+		request.getHeaders().set(RequestSignatureFilter.TIMESTAMP_HEADER, timestamp);
+		request.getHeaders().set(RequestSignatureFilter.SIGNATURE_HEADER,
+			signer.sign(requestId, timestamp, body));
+
+		return execution.execute(request, body);
+	}
+
+}

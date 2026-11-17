@@ -20,6 +20,7 @@ type newOptions struct {
 	architecture   string
 	virtualThreads bool
 	sample         bool
+	requestIDCheck bool
 	output         string
 	force          bool
 	noInteractive  bool
@@ -51,6 +52,7 @@ func newNewCmdWithOptions(opts newOptions) *cobra.Command {
 	flags.StringVar(&opts.architecture, "architecture", "", "Project architecture: "+strings.Join(arch.IDList(), " or "))
 	flags.BoolVar(&opts.virtualThreads, "virtual-threads", true, "Enable virtual threads (use --virtual-threads=false to disable)")
 	flags.BoolVar(&opts.sample, "sample", true, "Include the sample Hello endpoint (use --sample=false to disable)")
+	flags.BoolVar(&opts.requestIDCheck, "request-id-check", false, "Enable Redis-backed request id duplicate detection")
 	flags.StringVar(&opts.output, "output", ".", "Directory that will contain the new project")
 	flags.BoolVar(&opts.force, "force", false, "Replace the target directory if it already exists")
 	flags.BoolVar(&opts.noInteractive, "no-interactive", false, "Never prompt; fail when required values are missing")
@@ -69,6 +71,7 @@ func runNew(cmd *cobra.Command, args []string, opts newOptions) error {
 		Architecture:   strings.TrimSpace(opts.architecture),
 		VirtualThreads: opts.virtualThreads,
 		Sample:         opts.sample,
+		RequestIDCheck: opts.requestIDCheck,
 		Output:         opts.output,
 		Force:          opts.force,
 	}
@@ -181,6 +184,14 @@ func fillInteractively(cmd *cobra.Command, in *generator.Input) error {
 			return abortErr("sample", err)
 		}
 		in.Sample = answer
+	}
+
+	if !cmd.Flags().Changed("request-id-check") {
+		answer, err := prompter.Confirm("Enable request id duplicate check (requires Redis)?", false)
+		if err != nil {
+			return abortErr("request id check", err)
+		}
+		in.RequestIDCheck = answer
 	}
 
 	return nil

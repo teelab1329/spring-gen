@@ -26,6 +26,7 @@ type Input struct {
 	Architecture   string // "layered" or "clean"
 	VirtualThreads bool
 	Sample         bool // include the Hello sample endpoint
+	RequestIDCheck bool // enable Redis-backed request id duplicate detection
 	Output         string
 	Force          bool
 }
@@ -42,6 +43,7 @@ type Data struct {
 	Architecture   string // architecture ID, e.g. layered
 	VirtualThreads bool
 	Sample         bool
+	RequestIDCheck bool
 	Java           string
 	Boot           string
 }
@@ -102,6 +104,7 @@ func NewData(in Input) (Data, error) {
 		Architecture:   in.Architecture,
 		VirtualThreads: in.VirtualThreads,
 		Sample:         in.Sample,
+		RequestIDCheck: in.RequestIDCheck,
 		Java:           JavaVersion,
 		Boot:           BootVersion,
 	}, nil

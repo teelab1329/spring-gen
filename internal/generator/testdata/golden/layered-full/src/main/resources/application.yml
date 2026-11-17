@@ -43,6 +43,15 @@ app:
           keys: [email, emailAddress, email_address]
         - type: HASH
           keys: [nationalId, national_id, phone, phoneNumber, phone_number]
+  security:
+    request-signature:
+      # Set REQUEST_SIGNING_SECRET in the environment; startup fails when empty.
+      enabled: true
+      secret: ${REQUEST_SIGNING_SECRET:}
+      max-clock-skew: 5m
+      max-body-size: 1MB
+      include-paths: [/api/**]
+      exclude-paths: [/actuator/**]
   rest-clients:
     # One connection pool per downstream service. Values below are the
     # recommended defaults; each client may override any of them.
@@ -59,3 +68,5 @@ app:
       greeting:
         base-url: http://localhost:${server.port:8080}
         read-timeout: 3s
+        # Signs calls with REQUEST_SIGNING_SECRET so this service can call itself.
+        sign-requests: true

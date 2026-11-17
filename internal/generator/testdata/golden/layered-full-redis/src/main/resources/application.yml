@@ -1,0 +1,84 @@
+spring:
+  application:
+    name: order-service
+  threads:
+    virtual:
+      enabled: true
+  data:
+    redis:
+      # TODO: point at your Redis instance and add password/TLS/cluster settings.
+      host: localhost
+      port: 6379
+
+logging:
+  level:
+    root: INFO
+  # Every log line and stack trace goes through the masking converters.
+  exception-conversion-word: "%maskedEx"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  tracing:
+    sampling:
+      probability: 1.0
+  health:
+    redis:
+      # TODO: decide whether Redis health should gate your probes.
+      enabled: false
+
+# HTTP request/response logging with OpenTelemetry-style fields.
+# There is no trace exporter: ids only annotate this application's log lines.
+app:
+  http-logging:
+    enabled: true
+    max-body-size: 10KB
+    exclude-paths:
+      - /actuator/**
+  logging:
+    masking:
+      enabled: true
+      rules:
+        - type: FULL
+          keys: [password, passwd, secret, token, access_token, refresh_token, authorization,
+                 proxy-authorization, cookie, set-cookie, x-api-key, api_key, apikey]
+        - type: PARTIAL
+          keys: [cardNumber, card_number, pan, accountNumber, account_number]
+          keep-start: 4
+          keep-end: 4
+        - type: EMAIL
+          keys: [email, emailAddress, email_address]
+        - type: HASH
+          keys: [nationalId, national_id, phone, phoneNumber, phone_number]
+  security:
+    request-signature:
+      # Set REQUEST_SIGNING_SECRET in the environment; startup fails when empty.
+      enabled: true
+      secret: ${REQUEST_SIGNING_SECRET:}
+      max-clock-skew: 5m
+      max-body-size: 1MB
+      include-paths: [/api/**]
+      exclude-paths: [/actuator/**]
+      request-id-check:
+        enabled: true
+        key-prefix: "req-id:"
+  rest-clients:
+    # One connection pool per downstream service. Values below are the
+    # recommended defaults; each client may override any of them.
+    defaults:
+      connect-timeout: 2s
+      read-timeout: 5s
+      connection-request-timeout: 1s
+      max-connections: 50
+      max-connections-per-route: 20
+      time-to-live: 5m
+      validate-after-inactivity: 2s
+      evict-idle-after: 30s
+    clients:
+      greeting:
+        base-url: http://localhost:${server.port:8080}
+        read-timeout: 3s
+        # Signs calls with REQUEST_SIGNING_SECRET so this service can call itself.
+        sign-requests: true
